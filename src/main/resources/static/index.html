@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LifeDrop - Hospital-to-Donor Blood Bank Management Platform</title>
+    <meta name="description" content="LifeDrop Blood Bank - Connecting hospitals in need of blood with eligible voluntary blood donors. Compatibility matching and live database-calculated statistics.">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🩸</text></svg>">
+</head>
+<body>
+
+    <!-- Navigation Bar -->
+    <nav class="navbar" id="navbar">
+        <div class="container nav-container">
+            <a href="#" class="brand">
+                <div class="brand-icon">🩸</div>
+                <span>Life<span class="brand-highlight">Drop</span></span>
+            </a>
+
+            <ul class="nav-links">
+                <li><a href="#home" class="nav-link active">Home</a></li>
+                <li id="nav-item-blood-needed"><a href="#blood-needed" class="nav-link">Blood Needed</a></li>
+                <li id="nav-item-find-donor"><a href="javascript:void(0)" onclick="App.openFindDonorModal()" class="nav-link">Find a Donor</a></li>
+                <li id="nav-item-hospitals"><a href="#hospitals" class="nav-link">Hospitals</a></li>
+                <li id="nav-item-donors"><a href="#donors" class="nav-link">Donors</a></li>
+                <li id="nav-item-referral"><a href="#referral" class="nav-link">Referral</a></li>
+            </ul>
+
+            <div class="nav-actions" id="nav-auth-container">
+                <!-- Dynamically updated by app.js based on JWT auth state -->
+                <button class="btn btn-secondary btn-sm" onclick="App.openAuthModal('login')">Login</button>
+                <button class="btn btn-primary btn-sm" onclick="App.openAuthModal('register')">Register</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero" id="home">
+        <div class="container">
+            <div class="hero-badge">
+                <span>❤️</span>
+                <span>Hospital-to-Donor Voluntary Blood Network</span>
+            </div>
+            <h1 class="hero-title">
+                LifeDrop Connects <span class="gradient-text">Hospitals with Eligible Donors</span>
+            </h1>
+            <p class="hero-subtitle">
+                A production-quality platform connecting hospitals requiring blood with compatible, verified voluntary donors. Check donor eligibility, match compatible blood groups, and save lives.
+            </p>
+            <div class="hero-cta" id="hero-cta-container">
+                <button class="btn btn-primary btn-lg" onclick="App.openFindDonorModal()">
+                    🔍 Find Compatible Donors
+                </button>
+                <button class="btn btn-secondary btn-lg" onclick="App.openBecomeDonorModal()">
+                    🩸 Become a Donor
+                </button>
+                <button class="btn btn-outline-danger btn-lg" onclick="App.openBloodRequestModal()">
+                    🏥 Request Blood (Hospital)
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Impact Statistics Section (Live Database-Calculated) -->
+    <section class="stats-section" id="statistics">
+        <div class="container">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon red">🧑‍🤝‍🧑</div>
+                    <div class="stat-info">
+                        <div class="stat-value" id="stat-donors">0</div>
+                        <div class="stat-label">Registered Donors</div>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon emerald">🩸</div>
+                    <div class="stat-info">
+                        <div class="stat-value" id="stat-donations">0</div>
+                        <div class="stat-label">Successful Donations</div>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon blue">💖</div>
+                    <div class="stat-info">
+                        <div class="stat-value" id="stat-lives">0</div>
+                        <div class="stat-label">Lives Helped</div>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon amber">⚡</div>
+                    <div class="stat-info">
+                        <div class="stat-value" id="stat-emergency">98%</div>
+                        <div class="stat-label">Emergency Response</div>
+                    </div>
+                </div>
+            </div>
+            <div class="stats-note">
+                📊 Live database-calculated statistics updated from LifeDrop relational persistence.
+            </div>
+        </div>
+    </section>
+
+    <!-- Blood Requirement Section (Blood Needed) -->
+    <section class="blood-needed-section" id="blood-needed">
+        <div class="container">
+            <div class="section-header">
+                <div class="section-tag" id="blood-needed-tag">Current Inventory</div>
+                <h2 class="section-title" id="blood-needed-title">Blood Availability & Demand</h2>
+                <p class="section-description" id="blood-needed-desc">
+                    Live stock levels and dynamically calculated urgency thresholds across all 8 ABO/Rh blood groups.
+                </p>
+            </div>
+
+            <div class="blood-grid" id="blood-inventory-grid">
+                <!-- Dynamically rendered by app.js from /api/inventory -->
+            </div>
+        </div>
+    </section>
+
+    <!-- Hospital Blood Requests Section -->
+    <section class="donors-section" id="hospitals" style="background: rgba(15, 23, 42, 0.4);">
+        <div class="container">
+            <div class="section-header">
+                <div class="section-tag">Medical Facilities</div>
+                <h2 class="section-title">Active Hospital Blood Requests</h2>
+                <p class="section-description">
+                    Urgent and scheduled blood requirements posted by registered hospitals. Donors can respond directly to save lives.
+                </p>
+            </div>
+
+            <div id="hospital-requests-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 20px;">
+                <!-- Rendered dynamically by app.js -->
+            </div>
+        </div>
+    </section>
+
+    <!-- Donor Database Section -->
+    <section class="donors-section" id="donors">
+        <div class="container">
+            <div class="section-header">
+                <div class="section-tag">Verified Community</div>
+                <h2 class="section-title">Donor Database</h2>
+                <p class="section-description">
+                    Search and filter eligible voluntary blood donors by blood group, location, or name.
+                </p>
+            </div>
+
+            <!-- Search & Filters -->
+            <div class="search-filter-bar">
+                <div class="search-row">
+                    <div class="search-input-wrapper">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" id="donor-search-input" class="search-input" placeholder="Search by donor name or keyword...">
+                    </div>
+                    <div style="width: 200px;">
+                        <input type="text" id="donor-city-input" class="search-input" placeholder="City (e.g. Chennai)...">
+                    </div>
+                </div>
+
+                <div class="filter-tags">
+                    <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: 600;">Blood Group:</span>
+                    <button class="filter-btn active" onclick="App.setBloodGroupFilter('ALL', this)">All</button>
+                    <button class="filter-btn" onclick="App.setBloodGroupFilter('O+', this)">O+</button>
+                    <button class="filter-btn" onclick="App.setBloodGroupFilter('O-', this)">O-</button>
+                    <button class="filter-btn" onclick="App.setBloodGroupFilter('A+', this)">A+</button>
+                    <button class="filter-btn" onclick="App.setBloodGroupFilter('A-', this)">A-</button>
+                    <button class="filter-btn" onclick="App.setBloodGroupFilter('B+', this)">B+</button>
+                    <button class="filter-btn" onclick="App.setBloodGroupFilter('B-', this)">B-</button>
+                    <button class="filter-btn" onclick="App.setBloodGroupFilter('AB+', this)">AB+</button>
+                    <button class="filter-btn" onclick="App.setBloodGroupFilter('AB-', this)">AB-</button>
+
+                    <label class="filter-toggle-label">
+                        <input type="checkbox" id="filter-available-only" checked>
+                        <span>Available Only</span>
+                    </label>
+
+                    <label class="filter-toggle-label">
+                        <input type="checkbox" id="filter-eligible-only">
+                        <span>Eligible Only</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Donor Cards Grid -->
+            <div class="donors-grid" id="donors-grid">
+                <!-- Dynamically rendered from /api/donors -->
+            </div>
+        </div>
+    </section>
+
+    <!-- Referral System Section -->
+    <section class="referral-section" id="referral">
+        <div class="container">
+            <div class="referral-card">
+                <div class="referral-info">
+                    <div class="section-tag" style="text-align: left;">Community Rewards</div>
+                    <h2 style="font-size: 2rem; margin-bottom: 12px;">Refer Donors, Save Lives & Earn Stars</h2>
+                    <p style="color: var(--text-muted); font-size: 1rem; line-height: 1.6;">
+                        Share your unique referral code with friends and family. When your referred member registers and completes their first verified blood donation, you receive <strong>+10 Community Stars</strong>!
+                    </p>
+
+                    <div class="referral-code-box">
+                        <span style="color: var(--text-muted); font-size: 0.85rem;">Your Referral Code:</span>
+                        <span class="code-display" id="referral-code-display">PRAGA123</span>
+                        <button class="btn btn-primary btn-sm" onclick="App.copyReferralCode()">
+                            📋 Copy Code
+                        </button>
+                        <button class="btn btn-secondary btn-sm" onclick="App.viewMyReferrals()">
+                            ⭐ My Rewards
+                        </button>
+                    </div>
+                </div>
+
+                <div style="font-size: 5rem; text-align: center;">
+                    🌟
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-links">
+                <a href="#home" class="footer-link">Home</a>
+                <a href="#blood-needed" class="footer-link">Blood Inventory</a>
+                <a href="#hospitals" class="footer-link">Hospitals</a>
+                <a href="#donors" class="footer-link">Donors</a>
+                <a href="#referral" class="footer-link">Referrals</a>
+                <a href="/swagger-ui/index.html" target="_blank" class="footer-link" style="color: #fb7185;">📖 Swagger API Docs</a>
+            </div>
+            <p>© 2026 LifeDrop Blood Bank System. Production-quality architecture suitable for a college project and scalable toward production.</p>
+        </div>
+    </footer>
+
+    <!-- ==========================================
+         MODALS
+         ========================================== -->
+
+    <!-- 1. Authentication Modal (Login / Register) -->
+    <div class="modal-overlay" id="auth-modal">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h3>Welcome to LifeDrop</h3>
+                <button class="modal-close-btn" onclick="App.closeModal('auth-modal')">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-tabs">
+                    <button class="modal-tab active" data-tab="login" onclick="App.switchAuthTab('login')">Login</button>
+                    <button class="modal-tab" data-tab="register" onclick="App.switchAuthTab('register')">Register</button>
+                </div>
+
+                <!-- Login Form -->
+                <div id="login-form-container">
+                    <form id="login-form">
+                        <div class="form-group">
+                            <label class="form-label" for="login-email">Email Address</label>
+                            <input type="email" id="login-email" class="form-input" placeholder="e.g. apollo@lifedrop.org or rahul@lifedrop.org" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="login-password">Password</label>
+                            <input type="password" id="login-password" class="form-input" placeholder="Enter your password" required>
+                        </div>
+                        <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 18px; line-height: 1.5;">
+                            💡 Demo Credentials:<br>
+                            🏥 <strong>Hospital:</strong> <code>apollo@lifedrop.org</code> (pass: <code>hospital123</code>)<br>
+                            🩸 <strong>Donor:</strong> <code>rahul@lifedrop.org</code> (pass: <code>donor123</code>)<br>
+                            ⚙️ <strong>Admin:</strong> <code>admin@lifedrop.org</code> (pass: <code>admin123</code>)
+                        </div>
+                        <button type="submit" class="btn btn-primary" style="width: 100%;">
+                            🔐 Sign In with JWT
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Register Form -->
+                <div id="register-form-container" style="display: none;">
+                    <form id="register-form">
+                        <div class="form-group">
+                            <label class="form-label" for="reg-role">I am registering as</label>
+                            <select id="reg-role" class="form-select" onchange="App.toggleRegRoleFields()">
+                                <option value="DONOR" selected>🩸 Voluntary Blood Donor</option>
+                                <option value="HOSPITAL">🏥 Hospital / Blood Bank</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="reg-name" id="reg-name-label">Full Name</label>
+                            <input type="text" id="reg-name" class="form-input" placeholder="e.g. Dr. Priyadharshini / Donor Name" required>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label" for="reg-email">Email</label>
+                                <input type="email" id="reg-email" class="form-input" placeholder="contact@domain.com" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="reg-phone">Phone / Helpline</label>
+                                <input type="tel" id="reg-phone" class="form-input" placeholder="+91 9876543210" required>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="reg-password">Password</label>
+                            <input type="password" id="reg-password" class="form-input" placeholder="Min 6 characters" required>
+                        </div>
+
+                        <!-- Donor Specific Fields -->
+                        <div id="reg-donor-fields">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label" for="reg-blood-group">Blood Group</label>
+                                    <select id="reg-blood-group" class="form-select">
+                                        <option value="O+">O+</option>
+                                        <option value="O-">O-</option>
+                                        <option value="A+">A+</option>
+                                        <option value="A-">A-</option>
+                                        <option value="B+">B+</option>
+                                        <option value="B-">B-</option>
+                                        <option value="AB+">AB+</option>
+                                        <option value="AB-">AB-</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label" for="reg-age">Age (18-65)</label>
+                                    <input type="number" id="reg-age" class="form-input" min="18" max="65" value="25">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="reg-referral-code">Referral Code (Optional)</label>
+                                <input type="text" id="reg-referral-code" class="form-input" placeholder="e.g. PRAGA123">
+                            </div>
+                        </div>
+
+                        <!-- Hospital Specific Fields -->
+                        <div id="reg-hospital-fields" style="display: none;">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label" for="reg-license">License / Reg Number</label>
+                                    <input type="text" id="reg-license" class="form-input" placeholder="e.g. LIC-CHE-2024">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label" for="reg-helpline">Emergency Helpline</label>
+                                    <input type="tel" id="reg-helpline" class="form-input" placeholder="+91 44 28290200">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label" for="reg-city">City</label>
+                                <input type="text" id="reg-city" class="form-input" placeholder="e.g. Chennai" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="reg-address">Address</label>
+                                <input type="text" id="reg-address" class="form-input" placeholder="Area / Street">
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary" style="width: 100%;">
+                            Create Account
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. Dedicated Hospital Dashboard Modal -->
+    <div class="modal-overlay" id="hospital-modal">
+        <div class="modal-container large">
+            <div class="modal-header">
+                <h3>🏥 Hospital Dashboard</h3>
+                <button class="modal-close-btn" onclick="App.closeModal('hospital-modal')">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-tabs">
+                    <button class="modal-tab hospital-tab-btn active" data-tab="hosp-requests" onclick="App.loadHospitalTab('hosp-requests')">Active Blood Requests</button>
+                    <button class="modal-tab hospital-tab-btn" data-tab="hosp-create" onclick="App.loadHospitalTab('hosp-create')">Create Blood Request</button>
+                    <button class="modal-tab hospital-tab-btn" data-tab="hosp-donors" onclick="App.loadHospitalTab('hosp-donors')">Find Compatible Donors</button>
+                    <button class="modal-tab hospital-tab-btn" data-tab="hosp-profile" onclick="App.loadHospitalTab('hosp-profile')">Hospital Profile</button>
+                </div>
+
+                <div id="hospital-tab-content">
+                    <!-- Loaded dynamically by App.loadHospitalTab() -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. Dedicated Donor Dashboard Modal -->
+    <div class="modal-overlay" id="donor-dashboard-modal">
+        <div class="modal-container large">
+            <div class="modal-header">
+                <h3>🩸 Donor Dashboard</h3>
+                <button class="modal-close-btn" onclick="App.closeModal('donor-dashboard-modal')">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-tabs">
+                    <button class="modal-tab donor-tab-btn active" data-tab="donor-incoming" onclick="App.loadDonorTab('donor-incoming')">Dashboard & Matching Requests</button>
+                    <button class="modal-tab donor-tab-btn" data-tab="donor-status" onclick="App.loadDonorTab('donor-status')">Eligibility & Availability</button>
+                    <button class="modal-tab donor-tab-btn" data-tab="donor-history" onclick="App.loadDonorTab('donor-history')">Donation History</button>
+                    <button class="modal-tab donor-tab-btn" data-tab="donor-profile" onclick="App.loadDonorTab('donor-profile')">My Profile</button>
+                </div>
+
+                <div id="donor-tab-content">
+                    <!-- Loaded dynamically by App.loadDonorTab() -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. Compatible Donor Finder Modal -->
+    <div class="modal-overlay" id="find-donor-modal">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h3>Find Compatible Blood Donors</h3>
+                <button class="modal-close-btn" onclick="App.closeModal('find-donor-modal')">×</button>
+            </div>
+            <div class="modal-body">
+                <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 20px;">
+                    Select the required recipient blood group. LifeDrop's universal compatibility engine filters eligible donors who can safely donate.
+                </p>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="find-blood-group">Required Blood Group</label>
+                        <select id="find-blood-group" class="form-select" onchange="App.findCompatibleDonors()">
+                            <option value="O+">O+</option>
+                            <option value="O-">O-</option>
+                            <option value="A+">A+</option>
+                            <option value="A-">A-</option>
+                            <option value="B+">B+</option>
+                            <option value="B-">B-</option>
+                            <option value="AB+">AB+ (Universal Recipient)</option>
+                            <option value="AB-">AB-</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="find-city">Filter by City</label>
+                        <input type="text" id="find-city" class="form-input" placeholder="All Cities" oninput="App.findCompatibleDonors()">
+                    </div>
+                </div>
+
+                <div id="compatible-results-container" style="margin-top: 14px;">
+                    <!-- Rendered by app.js -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 5. Create Blood Request Modal (Hospital) -->
+    <div class="modal-overlay" id="blood-request-modal">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h3>Post Hospital Blood Requirement</h3>
+                <button class="modal-close-btn" onclick="App.closeModal('blood-request-modal')">×</button>
+            </div>
+            <div class="modal-body">
+                <form id="blood-request-form">
+                    <div class="form-group">
+                        <label class="form-label" for="req-hospital-name">Hospital Name</label>
+                        <input type="text" id="req-hospital-name" class="form-input" placeholder="e.g. Apollo Speciality Hospital" required>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label" for="req-blood-group">Blood Group Required</label>
+                            <select id="req-blood-group" class="form-select" required>
+                                <option value="O+">O+</option>
+                                <option value="O-">O-</option>
+                                <option value="A+">A+</option>
+                                <option value="A-">A-</option>
+                                <option value="B+">B+</option>
+                                <option value="B-">B-</option>
+                                <option value="AB+">AB+</option>
+                                <option value="AB-">AB-</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="req-units">Required Units</label>
+                            <input type="number" id="req-units" class="form-input" min="1" max="20" value="2" required>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label" for="req-urgency">Urgency Level</label>
+                            <select id="req-urgency" class="form-select">
+                                <option value="CRITICAL">Critical (Immediate)</option>
+                                <option value="HIGH" selected>High (Within 24h)</option>
+                                <option value="MEDIUM">Medium (Within 48h)</option>
+                                <option value="LOW">Low (Scheduled)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="req-hospital-location">City / Location</label>
+                            <input type="text" id="req-hospital-location" class="form-input" placeholder="e.g. Chennai" required>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label" for="req-date">Required Date</label>
+                            <input type="date" id="req-date" class="form-input">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="req-phone">Emergency Phone</label>
+                            <input type="tel" id="req-phone" class="form-input" placeholder="+91 44 28290200">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="req-notes">Clinical Notes / Department</label>
+                        <input type="text" id="req-notes" class="form-input" placeholder="e.g. Emergency cardiac procedure requirement">
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width: 100%;">
+                        Submit Hospital Blood Request
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 6. Eligibility Inspector Modal -->
+    <div class="modal-overlay" id="eligibility-modal">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h3>Donor Eligibility Status</h3>
+                <button class="modal-close-btn" onclick="App.closeModal('eligibility-modal')">×</button>
+            </div>
+            <div class="modal-body" id="eligibility-modal-body">
+                <!-- Rendered dynamically by app.js -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 7. My Referrals Modal -->
+    <div class="modal-overlay" id="referrals-modal">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h3>My Referral Activity & Rewards</h3>
+                <button class="modal-close-btn" onclick="App.closeModal('referrals-modal')">×</button>
+            </div>
+            <div class="modal-body">
+                <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 14px;">
+                    Earn <strong>+10 Community Stars</strong> for every referred donor who completes their first verified blood donation.
+                </p>
+                <div id="my-referrals-container">
+                    <!-- Rendered dynamically -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 8. Admin Dashboard Modal -->
+    <div class="modal-overlay" id="admin-modal">
+        <div class="modal-container large">
+            <div class="modal-header">
+                <h3>⚙️ LifeDrop Admin Dashboard</h3>
+                <button class="modal-close-btn" onclick="App.closeModal('admin-modal')">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-tabs">
+                    <button class="modal-tab admin-tab-btn active" data-tab="stats" onclick="App.loadAdminTab('stats')">Overview</button>
+                    <button class="modal-tab admin-tab-btn" data-tab="donors" onclick="App.loadAdminTab('donors')">Manage Donors</button>
+                    <button class="modal-tab admin-tab-btn" data-tab="hospitals" onclick="App.loadAdminTab('hospitals')">Manage Hospitals</button>
+                    <button class="modal-tab admin-tab-btn" data-tab="inventory" onclick="App.loadAdminTab('inventory')">Blood Inventory</button>
+                    <button class="modal-tab admin-tab-btn" data-tab="requests" onclick="App.loadAdminTab('requests')">Blood Requests</button>
+                    <button class="modal-tab admin-tab-btn" data-tab="donations" onclick="App.loadAdminTab('donations')">Verify Donations</button>
+                    <button class="modal-tab admin-tab-btn" data-tab="referrals" onclick="App.loadAdminTab('referrals')">Referrals</button>
+                </div>
+
+                <div id="admin-tab-content">
+                    <!-- Loaded dynamically by App.loadAdminTab() -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications Container -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <!-- Scripts -->
+    <script src="js/api.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

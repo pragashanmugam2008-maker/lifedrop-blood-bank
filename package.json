@@ -1,0 +1,9 @@
+{
+  "name": "lifedrop-blood-bank",
+  "version": "1.0.0",
+  "private": true,
+  "description": "LifeDrop - Hospital-to-Donor Blood Bank Management Platform",
+  "scripts": {
+    "build": "echo Static assets ready in src/main/resources/static"
+  }
+}

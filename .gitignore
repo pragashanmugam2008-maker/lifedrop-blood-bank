@@ -37,7 +37,9 @@ out/
 # Visual Studio Code
 .vscode/
 
-# Local Environment and Secret Files
+# Local Environment, Vercel, and Secret Files
+.vercel/
+node_modules/
 .env
 .env.*
 *.local

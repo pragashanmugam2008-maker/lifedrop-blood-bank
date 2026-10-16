@@ -3,6 +3,7 @@
   "outputDirectory": "src/main/resources/static",
   "cleanUrls": true,
   "routes": [
+    { "src": "/api/(.*)", "dest": "https://lifedrop-blood-bank.onrender.com/api/$1" },
     { "handle": "filesystem" },
     { "src": "/(.*)", "dest": "/index.html" }
   ]

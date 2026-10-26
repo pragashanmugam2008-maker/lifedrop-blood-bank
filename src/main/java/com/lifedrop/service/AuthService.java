@@ -17,6 +17,7 @@ import com.lifedrop.repository.HospitalRepository;
 import com.lifedrop.repository.ReferralRepository;
 import com.lifedrop.repository.UserRepository;
 import com.lifedrop.security.JwtTokenProvider;
+import com.lifedrop.security.UserPrincipal;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -117,11 +118,13 @@ public class AuthService {
             hospitalName = savedHospital.getHospitalName();
         }
 
-        // Generate user's referral code automatically
+        // Generate user's referral code automatically for donors
         String referralCode = null;
-        try {
-            referralCode = referralService.generateReferralCode(savedUser.getId()).getReferralCode();
-        } catch (Exception ignored) {
+        if (role == Role.DONOR) {
+            try {
+                referralCode = referralService.generateReferralCodeForUser(savedUser).getReferralCode();
+            } catch (Exception ignored) {
+            }
         }
 
         String token = jwtTokenProvider.generateTokenFromUserId(savedUser.getId(), savedUser.getEmail(), savedUser.getRole().name());
@@ -136,21 +139,31 @@ public class AuthService {
                 new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
         );
 
+        UserPrincipal userPrincipal = (UserPrincipal) authentication.getPrincipal();
         String token = jwtTokenProvider.generateToken(authentication);
 
-        User user = userRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        Long userId = userPrincipal.getId();
+        Role role = userPrincipal.getRole();
 
-        Long donorId = donorRepository.findByUserId(user.getId()).map(Donor::getId).orElse(null);
-        Hospital hospital = hospitalRepository.findByUserId(user.getId()).orElse(null);
-        Long hospitalId = hospital != null ? hospital.getId() : null;
-        String hospitalName = hospital != null ? hospital.getHospitalName() : null;
+        Long donorId = null;
+        Long hospitalId = null;
+        String hospitalName = null;
+        String referralCode = null;
 
-        String referralCode = referralRepository.findByReferrerIdOrderByCreatedAtDesc(user.getId())
-                .stream().findFirst().map(Referral::getReferralCode).orElse(null);
+        if (role == Role.DONOR) {
+            donorId = donorRepository.findByUserId(userId).map(Donor::getId).orElse(null);
+            referralCode = referralRepository.findFirstByReferrerIdOrderByCreatedAtDesc(userId)
+                    .map(Referral::getReferralCode).orElse(null);
+        } else if (role == Role.HOSPITAL) {
+            Hospital hospital = hospitalRepository.findByUserId(userId).orElse(null);
+            if (hospital != null) {
+                hospitalId = hospital.getId();
+                hospitalName = hospital.getHospitalName();
+            }
+        }
 
-        return new AuthResponse(token, user.getId(), user.getName(), user.getEmail(),
-                user.getPhone(), user.getRole(), donorId, hospitalId, hospitalName, referralCode);
+        return new AuthResponse(token, userId, userPrincipal.getName(), userPrincipal.getEmail(),
+                userPrincipal.getPhone(), role, donorId, hospitalId, hospitalName, referralCode);
     }
 
     @Transactional(readOnly = true)
@@ -158,13 +171,22 @@ public class AuthService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
 
-        Long donorId = donorRepository.findByUserId(userId).map(Donor::getId).orElse(null);
-        Hospital hospital = hospitalRepository.findByUserId(userId).orElse(null);
-        Long hospitalId = hospital != null ? hospital.getId() : null;
-        String hospitalName = hospital != null ? hospital.getHospitalName() : null;
+        Long donorId = null;
+        Long hospitalId = null;
+        String hospitalName = null;
+        String referralCode = null;
 
-        String referralCode = referralRepository.findByReferrerIdOrderByCreatedAtDesc(userId)
-                .stream().findFirst().map(Referral::getReferralCode).orElse(null);
+        if (user.getRole() == Role.DONOR) {
+            donorId = donorRepository.findByUserId(userId).map(Donor::getId).orElse(null);
+            referralCode = referralRepository.findFirstByReferrerIdOrderByCreatedAtDesc(userId)
+                    .map(Referral::getReferralCode).orElse(null);
+        } else if (user.getRole() == Role.HOSPITAL) {
+            Hospital hospital = hospitalRepository.findByUserId(userId).orElse(null);
+            if (hospital != null) {
+                hospitalId = hospital.getId();
+                hospitalName = hospital.getHospitalName();
+            }
+        }
 
         return new UserResponse(user.getId(), user.getName(), user.getEmail(), user.getPhone(),
                 user.getRole(), donorId, hospitalId, hospitalName, referralCode, user.getCreatedAt());

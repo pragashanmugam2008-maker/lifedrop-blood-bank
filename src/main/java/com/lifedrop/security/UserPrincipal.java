@@ -15,15 +15,22 @@ public class UserPrincipal implements UserDetails {
     private final String name;
     private final String email;
     private final String password;
+    private final String phone;
     private final Role role;
     private final Collection<? extends GrantedAuthority> authorities;
 
     public UserPrincipal(Long id, String name, String email, String password, Role role,
                          Collection<? extends GrantedAuthority> authorities) {
+        this(id, name, email, password, null, role, authorities);
+    }
+
+    public UserPrincipal(Long id, String name, String email, String password, String phone, Role role,
+                         Collection<? extends GrantedAuthority> authorities) {
         this.id = id;
         this.name = name;
         this.email = email;
         this.password = password;
+        this.phone = phone;
         this.role = role;
         this.authorities = authorities;
     }
@@ -38,6 +45,7 @@ public class UserPrincipal implements UserDetails {
                 user.getName(),
                 user.getEmail(),
                 user.getPassword(),
+                user.getPhone(),
                 user.getRole(),
                 authorities
         );
@@ -53,6 +61,10 @@ public class UserPrincipal implements UserDetails {
 
     public String getEmail() {
         return email;
+    }
+
+    public String getPhone() {
+        return phone;
     }
 
     public Role getRole() {

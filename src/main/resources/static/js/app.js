@@ -1993,11 +1993,27 @@ const App = {
 
         // Login Form Submission
         const loginForm = document.getElementById('login-form');
+        const loginSubmitBtn = document.getElementById('login-submit-btn');
         if (loginForm) {
             loginForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
+                if (this._isLoggingIn) return;
+
                 const email = document.getElementById('login-email').value.trim();
                 const password = document.getElementById('login-password').value;
+
+                if (!email || !password) {
+                    this.showToast('Please enter both email and password', 'error');
+                    return;
+                }
+
+                this._isLoggingIn = true;
+                const submitBtn = loginSubmitBtn || loginForm.querySelector('button[type="submit"]');
+                const origBtnHtml = submitBtn ? submitBtn.innerHTML : '';
+                if (submitBtn) {
+                    submitBtn.disabled = true;
+                    submitBtn.innerHTML = '<span class="btn-spinner"></span> Authenticating...';
+                }
 
                 try {
                     const res = await Api.auth.login(email, password);
@@ -2008,18 +2024,30 @@ const App = {
                         this.renderAuthUI();
                         this.closeModal('auth-modal');
                         this.showToast(`Welcome back, ${res.data.hospitalName || res.data.name}!`, 'success');
+                    } else {
+                        throw new Error((res && res.message) ? res.message : 'Login failed');
                     }
                 } catch (err) {
-                    this.showToast(err.message, 'error');
+                    const userMsg = err.message || 'Login failed. Please check your credentials and try again.';
+                    this.showToast(userMsg, 'error');
+                } finally {
+                    this._isLoggingIn = false;
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.innerHTML = origBtnHtml;
+                    }
                 }
             });
         }
 
         // Register Form Submission
         const regForm = document.getElementById('register-form');
+        const regSubmitBtn = document.getElementById('register-submit-btn');
         if (regForm) {
             regForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
+                if (this._isRegistering) return;
+
                 const role = document.getElementById('reg-role').value;
                 const formData = {
                     role: role,
@@ -2031,6 +2059,16 @@ const App = {
                     address: document.getElementById('reg-address').value.trim() || ''
                 };
 
+                if (!formData.name || !formData.email || !formData.password || !formData.phone) {
+                    this.showToast('Please fill in all required fields', 'error');
+                    return;
+                }
+
+                if (formData.password.length < 6) {
+                    this.showToast('Password must be at least 6 characters long', 'error');
+                    return;
+                }
+
                 if (role === 'DONOR') {
                     formData.bloodGroup = document.getElementById('reg-blood-group').value;
                     formData.age = parseInt(document.getElementById('reg-age').value) || 25;
@@ -2039,6 +2077,14 @@ const App = {
                     formData.hospitalName = formData.name;
                     formData.licenseNumber = document.getElementById('reg-license').value.trim() || '';
                     formData.emergencyHelpline = document.getElementById('reg-helpline').value.trim() || formData.phone;
+                }
+
+                this._isRegistering = true;
+                const submitBtn = regSubmitBtn || regForm.querySelector('button[type="submit"]');
+                const origBtnHtml = submitBtn ? submitBtn.innerHTML : '';
+                if (submitBtn) {
+                    submitBtn.disabled = true;
+                    submitBtn.innerHTML = '<span class="btn-spinner"></span> Creating Account...';
                 }
 
                 try {
@@ -2050,11 +2096,22 @@ const App = {
                         this.renderAuthUI();
                         this.closeModal('auth-modal');
                         this.showToast(`Registration successful! Welcome to LifeDrop.`, 'success');
-                        this.loadStatistics();
-                        this.loadDonors();
+                        setTimeout(() => {
+                            this.loadStatistics();
+                            this.loadDonors();
+                        }, 50);
+                    } else {
+                        throw new Error((res && res.message) ? res.message : 'Registration failed');
                     }
                 } catch (err) {
-                    this.showToast(err.message, 'error');
+                    const userMsg = err.message || 'Registration failed. Please check your information and try again.';
+                    this.showToast(userMsg, 'error');
+                } finally {
+                    this._isRegistering = false;
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.innerHTML = origBtnHtml;
+                    }
                 }
             });
         }

@@ -4,11 +4,15 @@
  * Supports JWT Stateless Authentication, Role-based operations, and centralized error handling.
  */
 
-const API_BASE_URL = (typeof window !== 'undefined' && window.LIFEDROP_API_URL)
-    ? window.LIFEDROP_API_URL.replace(/\/+$/, '')
-    : (window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1')
-        ? (window.location.port === '8080' ? '' : 'http://localhost:8080')
-        : '');
+const API_BASE_URL = (() => {
+    if (typeof window === 'undefined') return '';
+    if (window.LIFEDROP_API_URL) return window.LIFEDROP_API_URL.replace(/\/+$/, '');
+    if (window.location.protocol === 'file:') return 'https://lifedrop-blood-bank-3ypa.onrender.com';
+    if (window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1')) {
+        return window.location.port === '8080' ? '' : 'http://localhost:8080';
+    }
+    return '';
+})();
 
 const API_PREFIX = `${API_BASE_URL}/api`;
 
@@ -48,7 +52,7 @@ const Api = {
         localStorage.removeItem('lifedrop_user');
     },
 
-    // Generic Fetch Wrapper
+    // Generic Fetch Wrapper with AbortController timeout & actionable error messages
     async request(endpoint, options = {}) {
         const url = `${API_PREFIX}${endpoint}`;
         const headers = {
@@ -61,11 +65,17 @@ const Api = {
             headers['Authorization'] = `Bearer ${token}`;
         }
 
+        const timeoutMs = options.timeout || 35000;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
         try {
             const response = await fetch(url, {
                 ...options,
-                headers
+                headers,
+                signal: options.signal || controller.signal
             });
+            clearTimeout(timeoutId);
 
             const data = await response.json().catch(() => null);
 
@@ -76,6 +86,13 @@ const Api = {
 
             return data;
         } catch (error) {
+            clearTimeout(timeoutId);
+            if (error.name === 'AbortError') {
+                throw new Error('Connection timed out. The server may be waking up from sleep, please try again in a few moments.');
+            }
+            if (error.message === 'Failed to fetch' || error.message.includes('NetworkError')) {
+                throw new Error('Network error: Unable to reach LifeDrop backend server. Please verify your connection.');
+            }
             console.error(`API Error on [${options.method || 'GET'} ${endpoint}]:`, error);
             throw error;
         }

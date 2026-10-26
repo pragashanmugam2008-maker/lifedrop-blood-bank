@@ -47,7 +47,14 @@ public class ReferralService {
     public ReferralResponse generateReferralCode(Long userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + userId));
+        return generateReferralCodeForUser(user);
+    }
 
+    /**
+     * Generates a unique referral code directly for an in-memory or persisted User entity.
+     */
+    @Transactional
+    public ReferralResponse generateReferralCodeForUser(User user) {
         // Generate unique code based on user's name or prefix
         String cleanName = user.getName().replaceAll("[^a-zA-Z]", "").toUpperCase(Locale.ROOT);
         String prefix = cleanName.length() >= 4 ? cleanName.substring(0, 4) : "LIFE";

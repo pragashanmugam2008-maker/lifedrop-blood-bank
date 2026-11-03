@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LifeDrop - Professional Admin Portal</title>
+    <meta name="description" content="LifeDrop Blood Bank Administrative Management Console - Securely manage donors, hospital blood requests, and live blood inventory.">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🩸</text></svg>">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/admin.css">
+</head>
+<body class="admin-body">
+
+    <!-- 1. Admin Login View (Shown when not authenticated as ADMIN) -->
+    <div id="admin-login-screen" class="admin-login-screen" style="display: none;">
+        <div class="admin-login-card">
+            <div class="admin-login-logo">
+                <div class="admin-login-icon">🩸</div>
+                <h2 class="admin-login-title">Life<span style="color: var(--primary);">Drop</span> Admin</h2>
+                <p class="admin-login-subtitle">Hospital-to-Donor Blood Bank Control Console</p>
+            </div>
+
+            <!-- Login / Access alerts -->
+            <div id="login-alert-box" class="login-alert"></div>
+            <div id="access-denied-message" style="display: none;"></div>
+
+            <form id="admin-login-form" onsubmit="AdminApp.handleAdminLogin(event)">
+                <div class="form-group">
+                    <label class="form-label" for="admin-login-email">Admin Email</label>
+                    <input type="email" id="admin-login-email" class="form-input" placeholder="admin@lifedrop.org" value="admin@lifedrop.org" required autocomplete="username">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="admin-login-password">Password</label>
+                    <input type="password" id="admin-login-password" class="form-input" placeholder="••••••••" value="admin123" required autocomplete="current-password">
+                </div>
+
+                <button type="submit" id="admin-login-btn" class="btn btn-primary admin-btn-block" style="margin-top: 10px;">
+                    🔐 Sign In to Admin Console
+                </button>
+            </form>
+
+            <div style="margin-top: 24px; text-align: center; border-top: 1px solid var(--border-glass); padding-top: 18px;">
+                <a href="index.html" style="color: var(--text-muted); text-decoration: none; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 6px;">
+                    &larr; Return to LifeDrop Public Portal
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. Main Admin Dashboard Layout -->
+    <div id="admin-layout" class="admin-layout" style="display: none;">
+
+        <!-- Sidebar Navigation -->
+        <aside class="admin-sidebar" id="admin-sidebar">
+            <div class="sidebar-header">
+                <a href="admin.html" class="sidebar-brand">
+                    <div class="sidebar-brand-icon">🩸</div>
+                    <div>
+                        <div class="sidebar-brand-title">Life<span style="color: var(--primary);">Drop</span></div>
+                        <span class="sidebar-brand-badge">ADMIN CONSOLE</span>
+                    </div>
+                </a>
+                <button class="sidebar-close-btn" onclick="AdminApp.toggleSidebar(false)">×</button>
+            </div>
+
+            <nav class="sidebar-nav">
+                <div class="nav-section-title">Main Menu</div>
+                
+                <a href="javascript:void(0)" class="sidebar-nav-item active" data-view="dashboard" onclick="AdminApp.loadView('dashboard')">
+                    <span class="nav-icon">📊</span>
+                    <span>Dashboard</span>
+                </a>
+
+                <a href="javascript:void(0)" class="sidebar-nav-item" data-view="donors" onclick="AdminApp.loadView('donors')">
+                    <span class="nav-icon">🧑‍🤝‍🧑</span>
+                    <span>Manage Donors</span>
+                </a>
+
+                <a href="javascript:void(0)" class="sidebar-nav-item" data-view="requests" onclick="AdminApp.loadView('requests')">
+                    <span class="nav-icon">📋</span>
+                    <span>Blood Requests</span>
+                </a>
+
+                <a href="javascript:void(0)" class="sidebar-nav-item" data-view="stock" onclick="AdminApp.loadView('stock')">
+                    <span class="nav-icon">🩸</span>
+                    <span>Blood Stock</span>
+                </a>
+
+                <div class="nav-section-title" style="margin-top: 18px;">External</div>
+
+                <a href="index.html" class="sidebar-nav-item" target="_blank" rel="noopener">
+                    <span class="nav-icon">🌐</span>
+                    <span>Public Platform ↗</span>
+                </a>
+
+                <a href="javascript:void(0)" class="sidebar-nav-item" onclick="AdminApp.handleLogout()" style="color: #fda4af;">
+                    <span class="nav-icon">🚪</span>
+                    <span>Sign Out</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="sidebar-user-card">
+                    <div class="sidebar-user-avatar" id="admin-user-avatar">AD</div>
+                    <div class="sidebar-user-info">
+                        <div class="sidebar-user-name" id="admin-user-name">Administrator</div>
+                        <div class="sidebar-user-role" id="admin-user-role">ADMIN ROLE</div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="admin-main">
+            <!-- Topbar -->
+            <header class="admin-topbar">
+                <div class="topbar-left">
+                    <button class="sidebar-toggle-btn" onclick="AdminApp.toggleSidebar()">☰</button>
+                    <div class="topbar-title-group">
+                        <h1 id="topbar-page-title">Dashboard Overview</h1>
+                        <p id="topbar-page-desc">Real-time database analytics, donor activity, and inventory thresholds.</p>
+                    </div>
+                </div>
+
+                <div class="topbar-right">
+                    <div class="live-indicator">
+                        <span class="live-dot"></span>
+                        <span>Spring Boot &bull; Live API</span>
+                    </div>
+
+                    <a href="index.html" class="btn btn-secondary btn-sm" style="font-size: 0.8rem; padding: 6px 12px;">
+                        Public Site ↗
+                    </a>
+                </div>
+            </header>
+
+            <!-- Views Container -->
+            <div class="admin-content">
+
+                <!-- VIEW 1: DASHBOARD -->
+                <section id="view-dashboard" class="admin-view active">
+                    <!-- Metric Cards Grid -->
+                    <div class="metrics-grid">
+                        <div class="metric-card crimson">
+                            <div class="metric-header">
+                                <span class="metric-title">Registered Donors</span>
+                                <div class="metric-icon-box">🧑‍🤝‍🧑</div>
+                            </div>
+                            <div class="metric-value" id="stat-total-donors">0</div>
+                            <div class="metric-subtext">Verified voluntary blood donors</div>
+                        </div>
+
+                        <div class="metric-card blue">
+                            <div class="metric-header">
+                                <span class="metric-title">Total Blood Requests</span>
+                                <div class="metric-icon-box">📋</div>
+                            </div>
+                            <div class="metric-value" id="stat-total-requests">0</div>
+                            <div class="metric-subtext">All hospital blood requirements</div>
+                        </div>
+
+                        <div class="metric-card amber">
+                            <div class="metric-header">
+                                <span class="metric-title">Pending Requests</span>
+                                <div class="metric-icon-box">⏳</div>
+                            </div>
+                            <div class="metric-value" id="stat-pending-requests">0</div>
+                            <div class="metric-subtext">Awaiting hospital / donor matching</div>
+                        </div>
+
+                        <div class="metric-card emerald">
+                            <div class="metric-header">
+                                <span class="metric-title">Approved / Fulfilled</span>
+                                <div class="metric-icon-box">✅</div>
+                            </div>
+                            <div class="metric-value" id="stat-approved-requests">0</div>
+                            <div class="metric-subtext">Successfully fulfilled blood requests</div>
+                        </div>
+
+                        <div class="metric-card purple">
+                            <div class="metric-header">
+                                <span class="metric-title">Rejected Requests</span>
+                                <div class="metric-icon-box">✕</div>
+                            </div>
+                            <div class="metric-value" id="stat-rejected-requests">0</div>
+                            <div class="metric-subtext">Cancelled or declined requests</div>
+                        </div>
+
+                        <div class="metric-card crimson">
+                            <div class="metric-header">
+                                <span class="metric-title">Blood Stock Units</span>
+                                <div class="metric-icon-box">🩸</div>
+                            </div>
+                            <div class="metric-value" id="stat-total-stock">0</div>
+                            <div class="metric-subtext">Available units across 8 blood groups</div>
+                        </div>
+                    </div>
+
+                    <!-- Blood Stock Overview Grid -->
+                    <div class="glass-panel">
+                        <div class="panel-header">
+                            <h2 class="panel-title">🩸 Blood Stock Overview (All 8 Blood Groups)</h2>
+                            <div class="panel-actions">
+                                <button class="btn btn-secondary btn-sm" onclick="AdminApp.loadView('stock')">
+                                    Manage Blood Stock &rarr;
+                                </button>
+                            </div>
+                        </div>
+                        <div class="stock-grid" id="dashboard-stock-overview-grid">
+                            <!-- Populated dynamically by AdminApp.renderDashboardStockOverview() -->
+                        </div>
+                    </div>
+
+                    <!-- Recent Blood Requests Panel -->
+                    <div class="glass-panel">
+                        <div class="panel-header">
+                            <h2 class="panel-title">🚨 Recent Blood Requests</h2>
+                            <div class="panel-actions">
+                                <button class="btn btn-secondary btn-sm" onclick="AdminApp.loadView('requests')">
+                                    View All Requests &rarr;
+                                </button>
+                            </div>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="admin-table">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Hospital / Requester</th>
+                                        <th>Blood Group</th>
+                                        <th>Required</th>
+                                        <th>Urgency</th>
+                                        <th>Status</th>
+                                        <th>Quick Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="dashboard-recent-requests-body">
+                                    <!-- Populated dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- VIEW 2: MANAGE DONORS -->
+                <section id="view-donors" class="admin-view">
+                    <div class="glass-panel">
+                        <div class="panel-header">
+                            <div style="display: flex; align-items: center; gap: 12px;">
+                                <h2 class="panel-title">🧑‍🤝‍🧑 Registered Donors Directory</h2>
+                                <span class="nav-badge" id="donors-count-badge" style="background: rgba(225, 29, 72, 0.2); color: var(--primary);">0 donors</span>
+                            </div>
+
+                            <div class="panel-actions">
+                                <!-- Search input -->
+                                <div class="search-box">
+                                    <span class="search-box-icon">🔍</span>
+                                    <input type="text" id="donor-search-input" placeholder="Search by name, city, blood group..." oninput="AdminApp.filterDonors()">
+                                </div>
+
+                                <!-- Blood Group Filter -->
+                                <select id="donor-blood-group-filter" class="filter-select" onchange="AdminApp.filterDonors()">
+                                    <option value="">All Blood Groups</option>
+                                    <option value="A+">A+</option>
+                                    <option value="A-">A-</option>
+                                    <option value="B+">B+</option>
+                                    <option value="B-">B-</option>
+                                    <option value="AB+">AB+</option>
+                                    <option value="AB-">AB-</option>
+                                    <option value="O+">O+</option>
+                                    <option value="O-">O-</option>
+                                </select>
+
+                                <!-- Status Filter -->
+                                <select id="donor-status-filter" class="filter-select" onchange="AdminApp.filterDonors()">
+                                    <option value="">All Availability</option>
+                                    <option value="available">Active / Available</option>
+                                    <option value="inactive">Inactive</option>
+                                </select>
+
+                                <button class="btn btn-secondary btn-sm" onclick="AdminApp.refreshDonors()" title="Refresh donors list">
+                                    🔄 Refresh
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="admin-table">
+                                <thead>
+                                    <tr>
+                                        <th>Donor</th>
+                                        <th>Blood Group</th>
+                                        <th>Age / Gender</th>
+                                        <th>Location</th>
+                                        <th>Phone</th>
+                                        <th style="text-align: center;">Donations</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="donors-table-body">
+                                    <!-- Populated dynamically by AdminApp.refreshDonors() -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- VIEW 3: MANAGE BLOOD REQUESTS -->
+                <section id="view-requests" class="admin-view">
+                    <div class="glass-panel">
+                        <div class="panel-header">
+                            <div style="display: flex; align-items: center; gap: 12px;">
+                                <h2 class="panel-title">📋 Hospital & Patient Blood Requests</h2>
+                                <span class="nav-badge" id="requests-count-badge" style="background: rgba(225, 29, 72, 0.2); color: var(--primary);">0 request(s)</span>
+                            </div>
+
+                            <div class="panel-actions">
+                                <div class="search-box">
+                                    <span class="search-box-icon">🔍</span>
+                                    <input type="text" id="request-search-input" placeholder="Search hospital, notes, phone..." oninput="AdminApp.filterRequests()">
+                                </div>
+
+                                <select id="request-blood-group-filter" class="filter-select" onchange="AdminApp.filterRequests()">
+                                    <option value="">All Blood Groups</option>
+                                    <option value="A+">A+</option>
+                                    <option value="A-">A-</option>
+                                    <option value="B+">B+</option>
+                                    <option value="B-">B-</option>
+                                    <option value="AB+">AB+</option>
+                                    <option value="AB-">AB-</option>
+                                    <option value="O+">O+</option>
+                                    <option value="O-">O-</option>
+                                </select>
+
+                                <button class="btn btn-secondary btn-sm" onclick="AdminApp.refreshRequests()" title="Refresh requests">
+                                    🔄 Refresh
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Status Filter Tabs -->
+                        <div style="display: flex; gap: 8px; margin-bottom: 20px; overflow-x: auto; padding-bottom: 4px;">
+                            <button class="btn btn-secondary btn-sm request-tab-btn active" data-status="all" onclick="AdminApp.setRequestFilter('all')">All Requests</button>
+                            <button class="btn btn-secondary btn-sm request-tab-btn" data-status="pending" onclick="AdminApp.setRequestFilter('pending')">⏳ Pending</button>
+                            <button class="btn btn-secondary btn-sm request-tab-btn" data-status="approved" onclick="AdminApp.setRequestFilter('approved')">✓ Approved</button>
+                            <button class="btn btn-secondary btn-sm request-tab-btn" data-status="fulfilled" onclick="AdminApp.setRequestFilter('fulfilled')">⚡ Fulfilled</button>
+                            <button class="btn btn-secondary btn-sm request-tab-btn" data-status="rejected" onclick="AdminApp.setRequestFilter('rejected')">✕ Rejected / Cancelled</button>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="admin-table">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Hospital / Requester</th>
+                                        <th>Blood Group</th>
+                                        <th>Units Needed</th>
+                                        <th>Urgency</th>
+                                        <th>Deadline & Contact</th>
+                                        <th>Status</th>
+                                        <th>Admin Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="requests-table-body">
+                                    <!-- Populated dynamically by AdminApp.refreshRequests() -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- VIEW 4: BLOOD STOCK MANAGEMENT -->
+                <section id="view-stock" class="admin-view">
+                    <div class="glass-panel">
+                        <div class="panel-header">
+                            <div>
+                                <h2 class="panel-title">🩸 Blood Stock Inventory Management</h2>
+                                <p style="font-size: 0.82rem; color: var(--text-muted); margin: 4px 0 0;">
+                                    Track, validate, and update blood unit quantities for each blood group. Negative values are strictly prohibited.
+                                </p>
+                            </div>
+                            <div class="panel-actions">
+                                <button class="btn btn-secondary btn-sm" onclick="AdminApp.refreshStock()">
+                                    🔄 Refresh Stock
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="stock-grid" id="stock-cards-grid">
+                            <!-- Populated dynamically for A+, A-, B+, B-, AB+, AB-, O+, O- -->
+                        </div>
+                    </div>
+                </section>
+
+            </div>
+        </main>
+    </div>
+
+    <!-- 3. Donor Details Modal -->
+    <div id="donor-details-modal" class="admin-modal-overlay">
+        <div class="admin-modal-card">
+            <div class="admin-modal-header">
+                <h3>🧑‍🤝‍🧑 Voluntary Donor Details</h3>
+                <button class="admin-modal-close" onclick="AdminApp.closeDonorModal()">×</button>
+            </div>
+            <div class="admin-modal-body" id="donor-modal-content">
+                <!-- Dynamically populated by AdminApp.viewDonorDetails() -->
+            </div>
+            <div class="admin-modal-footer">
+                <button class="btn btn-secondary btn-sm" onclick="AdminApp.closeDonorModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. Update Blood Stock Modal -->
+    <div id="stock-update-modal" class="admin-modal-overlay">
+        <div class="admin-modal-card">
+            <div class="admin-modal-header">
+                <h3>🩸 Update Blood Stock: <span id="stock-modal-blood-group" style="color: var(--primary);">O+</span></h3>
+                <button class="admin-modal-close" onclick="AdminApp.closeStockModal()">×</button>
+            </div>
+            <form onsubmit="AdminApp.handleStockUpdateSubmit(event)">
+                <div class="admin-modal-body">
+                    <input type="hidden" id="stock-modal-bg-input">
+
+                    <p style="color: var(--text-muted); font-size: 0.88rem; margin-bottom: 20px;">
+                        Set the verified unit quantity currently stored in the LifeDrop blood bank refrigeration inventory.
+                    </p>
+
+                    <div class="form-group">
+                        <label class="form-label" for="stock-modal-units-input">Available Units (Cannot be negative)</label>
+                        <input type="number" id="stock-modal-units-input" class="form-input" min="0" step="1" required style="font-size: 1.2rem; font-weight: 700;">
+                        <span style="font-size: 0.74rem; color: var(--text-muted); margin-top: 4px; display: block;">Validation enforces minimum of 0 units.</span>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label class="form-label" for="stock-modal-min-input">Minimum Safe Threshold (Units)</label>
+                        <input type="number" id="stock-modal-min-input" class="form-input" min="0" step="1" value="15">
+                        <span style="font-size: 0.74rem; color: var(--text-muted); margin-top: 4px; display: block;">Triggers dynamic emergency demand badge when stock drops below threshold.</span>
+                    </div>
+                </div>
+
+                <div class="admin-modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="AdminApp.closeStockModal()">Cancel</button>
+                    <button type="submit" id="stock-modal-submit-btn" class="btn btn-primary btn-sm">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Toast Notifications Container -->
+    <div id="admin-toast-container" style="position: fixed; bottom: 24px; right: 24px; z-index: 9999; max-width: 380px;"></div>
+
+    <!-- Client Scripts -->
+    <script src="js/api.js"></script>
+    <script src="js/admin.js"></script>
+</body>
+</html>

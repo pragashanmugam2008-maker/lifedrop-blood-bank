@@ -232,6 +232,7 @@
                 <a href="#donors" class="footer-link">Donors</a>
                 <a href="#referral" class="footer-link">Referrals</a>
                 <a href="/swagger-ui/index.html" target="_blank" class="footer-link" style="color: #fb7185;">📖 Swagger API Docs</a>
+                <a href="admin.html" class="footer-link" style="color: #fda4af; font-weight: 600;">⚙️ Admin Panel</a>
             </div>
             <p>© 2026 LifeDrop Blood Bank System. Production-quality architecture suitable for a college project and scalable toward production.</p>
         </div>
@@ -370,16 +371,27 @@
     <!-- 2. Dedicated Hospital Dashboard Modal -->
     <div class="modal-overlay" id="hospital-modal">
         <div class="modal-container large">
-            <div class="modal-header">
-                <h3>🏥 Hospital Dashboard</h3>
+            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <h3>🏥 Hospital Dashboard</h3>
+                    <button class="btn btn-secondary btn-sm" onclick="App.refreshHospitalDashboard()" title="Refresh Dashboard Data" style="padding: 4px 10px; font-size: 0.8rem;">
+                        🔄 Refresh
+                    </button>
+                </div>
                 <button class="modal-close-btn" onclick="App.closeModal('hospital-modal')">×</button>
             </div>
             <div class="modal-body">
                 <div class="modal-tabs">
-                    <button class="modal-tab hospital-tab-btn active" data-tab="hosp-requests" onclick="App.loadHospitalTab('hosp-requests')">Active Blood Requests</button>
-                    <button class="modal-tab hospital-tab-btn" data-tab="hosp-create" onclick="App.loadHospitalTab('hosp-create')">Create Blood Request</button>
-                    <button class="modal-tab hospital-tab-btn" data-tab="hosp-donors" onclick="App.loadHospitalTab('hosp-donors')">Find Compatible Donors</button>
-                    <button class="modal-tab hospital-tab-btn" data-tab="hosp-profile" onclick="App.loadHospitalTab('hosp-profile')">Hospital Profile</button>
+                    <button class="modal-tab hospital-tab-btn active" data-tab="hosp-requests" onclick="App.loadHospitalTab('hosp-requests')">📋 My Blood Requests</button>
+                    <button class="modal-tab hospital-tab-btn" data-tab="hosp-pending" onclick="App.loadHospitalTab('hosp-pending')">⏳ Pending Requests</button>
+                    <button class="modal-tab hospital-tab-btn" data-tab="hosp-accepted" onclick="App.loadHospitalTab('hosp-accepted')">✅ Accepted Donors</button>
+                    <button class="modal-tab hospital-tab-btn" data-tab="hosp-responses" onclick="App.loadHospitalTab('hosp-responses')">💬 Donor Responses</button>
+                    <button class="modal-tab hospital-tab-btn" data-tab="hosp-rejected" onclick="App.loadHospitalTab('hosp-rejected')">❌ Rejected Responses</button>
+                    <button class="modal-tab hospital-tab-btn" data-tab="hosp-completed" onclick="App.loadHospitalTab('hosp-completed')">🏁 Completed Requests</button>
+                    <button class="modal-tab hospital-tab-btn" data-tab="hosp-notifications" onclick="App.loadHospitalTab('hosp-notifications')">🔔 Notifications <span id="hosp-notif-badge" class="badge-count" style="display:none;">0</span></button>
+                    <button class="modal-tab hospital-tab-btn" data-tab="hosp-create" onclick="App.loadHospitalTab('hosp-create')">➕ Create Request</button>
+                    <button class="modal-tab hospital-tab-btn" data-tab="hosp-donors" onclick="App.loadHospitalTab('hosp-donors')">🔍 Find Donors</button>
+                    <button class="modal-tab hospital-tab-btn" data-tab="hosp-profile" onclick="App.loadHospitalTab('hosp-profile')">🏥 Profile</button>
                 </div>
 
                 <div id="hospital-tab-content">
@@ -392,13 +404,19 @@
     <!-- 3. Dedicated Donor Dashboard Modal -->
     <div class="modal-overlay" id="donor-dashboard-modal">
         <div class="modal-container large">
-            <div class="modal-header">
-                <h3>🩸 Donor Dashboard</h3>
+            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <h3>🩸 Donor Dashboard</h3>
+                    <button class="btn btn-secondary btn-sm" onclick="App.loadDonorTab('donor-incoming')" title="Refresh Requests" style="padding: 4px 10px; font-size: 0.8rem;">
+                        🔄 Refresh
+                    </button>
+                </div>
                 <button class="modal-close-btn" onclick="App.closeModal('donor-dashboard-modal')">×</button>
             </div>
             <div class="modal-body">
                 <div class="modal-tabs">
-                    <button class="modal-tab donor-tab-btn active" data-tab="donor-incoming" onclick="App.loadDonorTab('donor-incoming')">Dashboard & Matching Requests</button>
+                    <button class="modal-tab donor-tab-btn active" data-tab="donor-incoming" onclick="App.loadDonorTab('donor-incoming')">📥 Received Requests</button>
+                    <button class="modal-tab donor-tab-btn" data-tab="donor-accepted-tab" onclick="App.loadDonorTab('donor-accepted-tab')">✅ My Accepted Requests</button>
                     <button class="modal-tab donor-tab-btn" data-tab="donor-status" onclick="App.loadDonorTab('donor-status')">Eligibility & Availability</button>
                     <button class="modal-tab donor-tab-btn" data-tab="donor-history" onclick="App.loadDonorTab('donor-history')">Donation History</button>
                     <button class="modal-tab donor-tab-btn" data-tab="donor-profile" onclick="App.loadDonorTab('donor-profile')">My Profile</button>

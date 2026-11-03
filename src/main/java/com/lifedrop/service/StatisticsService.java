@@ -91,6 +91,16 @@ public class StatisticsService {
         stats.setTotalInventoryUnits(inventoryRepository.sumTotalAvailableUnits());
         stats.setLivesHelped(stats.getSuccessfulDonations() * 3);
         stats.setReferralRewards(referralRepository.sumTotalStarsDistributed());
+
+        long totalReqs = bloodRequestRepository.count();
+        long pending = bloodRequestRepository.countByStatus(RequestStatus.PENDING) + bloodRequestRepository.countByStatus(RequestStatus.ACTIVE);
+        long approved = bloodRequestRepository.countByStatus(RequestStatus.APPROVED) + bloodRequestRepository.countByStatus(RequestStatus.FULFILLED);
+        long rejected = bloodRequestRepository.countByStatus(RequestStatus.REJECTED) + bloodRequestRepository.countByStatus(RequestStatus.CANCELLED);
+
+        stats.setTotalRequests(totalReqs);
+        stats.setPendingRequests(pending);
+        stats.setApprovedRequests(approved);
+        stats.setRejectedRequests(rejected);
         return stats;
     }
 }

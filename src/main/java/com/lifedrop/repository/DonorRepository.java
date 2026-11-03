@@ -18,6 +18,8 @@ public interface DonorRepository extends JpaRepository<Donor, Long> {
 
     List<Donor> findByBloodGroup(BloodGroup bloodGroup);
 
+    List<Donor> findByBloodGroupAndAvailabilityStatusTrue(BloodGroup bloodGroup);
+
     List<Donor> findByBloodGroupIn(Collection<BloodGroup> bloodGroups);
 
     List<Donor> findByBloodGroupInAndAvailabilityStatusTrue(Collection<BloodGroup> bloodGroups);

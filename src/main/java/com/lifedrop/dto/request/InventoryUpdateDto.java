@@ -10,10 +10,10 @@ public class InventoryUpdateDto {
     private Integer availableUnits;
 
     @Min(value = 0, message = "Reserved units cannot be negative")
-    private Integer reservedUnits = 0;
+    private Integer reservedUnits;
 
     @Min(value = 0, message = "Minimum required units cannot be negative")
-    private Integer minimumRequiredUnits = 15;
+    private Integer minimumRequiredUnits;
 
     public InventoryUpdateDto() {
     }

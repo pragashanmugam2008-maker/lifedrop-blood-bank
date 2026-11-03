@@ -96,9 +96,9 @@ const App = {
                     <span class="role-tag ${roleClass}">${role}</span>
                 </div>
                 ${role === 'ADMIN' ? `
-                    <button class="btn btn-secondary btn-sm" onclick="App.openAdminModal()">
-                        ⚙️ Admin Dashboard
-                    </button>
+                    <a href="admin.html" class="btn btn-secondary btn-sm" style="display:inline-flex;align-items:center;gap:6px;">
+                        ⚙️ Admin Panel
+                    </a>
                 ` : ''}
                 ${role === 'HOSPITAL' ? `
                     <button class="btn btn-primary btn-sm" onclick="App.openHospitalDashboard()">
@@ -201,9 +201,9 @@ const App = {
             
             if (heroCta) {
                 heroCta.innerHTML = `
-                    <button class="btn btn-secondary btn-lg" onclick="App.openAdminModal()">
-                        ⚙️ Admin Dashboard
-                    </button>
+                    <a href="admin.html" class="btn btn-secondary btn-lg" style="display:inline-flex;align-items:center;gap:6px;">
+                        ⚙️ Admin Panel
+                    </a>
                     <button class="btn btn-primary btn-lg" onclick="App.openHospitalDashboard()">
                         🏥 Hospital Dashboard
                     </button>
@@ -237,6 +237,8 @@ const App = {
     },
 
     logout() {
+        this.stopHospitalPolling();
+        this.stopDonorPolling();
         Api.logout();
         this.state.user = null;
         this.renderAuthUI();
@@ -673,10 +675,66 @@ const App = {
             return;
         }
         this.openModal('hospital-modal');
+        this.startHospitalPolling();
+        this.updateHospitalNotificationBadge();
         this.loadHospitalTab('hosp-requests');
     },
 
-    async loadHospitalTab(tabName) {
+    startHospitalPolling() {
+        this.stopHospitalPolling();
+        this.hospitalPollingInterval = setInterval(() => {
+            const modal = document.getElementById('hospital-modal');
+            if (!modal || !modal.classList.contains('active')) {
+                this.stopHospitalPolling();
+                return;
+            }
+            this.updateHospitalNotificationBadge();
+            const activeTab = document.querySelector('.hospital-tab-btn.active');
+            if (activeTab) {
+                const tab = activeTab.dataset.tab;
+                if (tab === 'hosp-notifications' || tab === 'hosp-requests' || tab === 'hosp-accepted' || tab === 'hosp-responses') {
+                    this.loadHospitalTab(tab, true); // silent refresh
+                }
+            }
+        }, 8000);
+    },
+
+    stopHospitalPolling() {
+        if (this.hospitalPollingInterval) {
+            clearInterval(this.hospitalPollingInterval);
+            this.hospitalPollingInterval = null;
+        }
+    },
+
+    async updateHospitalNotificationBadge() {
+        try {
+            const res = await Api.bloodRequests.getNotifications();
+            if (res && res.data) {
+                const unreadCount = res.data.filter(n => !n.isRead).length;
+                const badge = document.getElementById('hosp-notif-badge');
+                if (badge) {
+                    if (unreadCount > 0) {
+                        badge.innerText = unreadCount;
+                        badge.style.display = 'inline-flex';
+                    } else {
+                        badge.style.display = 'none';
+                    }
+                }
+            }
+        } catch (e) {
+            // silent ignore on background poll
+        }
+    },
+
+    async refreshHospitalDashboard() {
+        const activeTab = document.querySelector('.hospital-tab-btn.active');
+        const tab = activeTab ? activeTab.dataset.tab : 'hosp-requests';
+        await this.updateHospitalNotificationBadge();
+        await this.loadHospitalTab(tab);
+        this.showToast('Hospital dashboard refreshed', 'info');
+    },
+
+    async loadHospitalTab(tabName, isSilent = false) {
         document.querySelectorAll('.hospital-tab-btn').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.tab === tabName);
         });
@@ -684,68 +742,425 @@ const App = {
         const content = document.getElementById('hospital-tab-content');
         if (!content) return;
 
-        content.innerHTML = `<p style="text-align: center; padding: 30px; color: var(--text-muted);">Loading hospital data...</p>`;
+        if (!isSilent) {
+            content.innerHTML = `<p style="text-align: center; padding: 30px; color: var(--text-muted);">Loading hospital data...</p>`;
+        }
 
         try {
             if (tabName === 'hosp-requests') {
                 const res = await Api.bloodRequests.getMyRequests();
-                if (res && res.data) {
-                    const reqs = res.data;
-                    if (reqs.length === 0) {
-                        content.innerHTML = `
-                            <div style="text-align: center; padding: 40px;">
-                                <p style="color: var(--text-muted); margin-bottom: 16px;">You have not posted any active blood requests yet.</p>
-                                <button class="btn btn-primary btn-sm" onclick="App.loadHospitalTab('hosp-create')">➕ Create Blood Request</button>
+                const reqs = (res && res.data) ? res.data : [];
+
+                if (reqs.length === 0) {
+                    content.innerHTML = `
+                        <div style="text-align: center; padding: 40px; background: rgba(15, 23, 42, 0.4); border-radius: var(--radius-sm);">
+                            <div style="font-size: 2.2rem; margin-bottom: 10px;">📋</div>
+                            <h4>No blood requests created yet</h4>
+                            <p style="color: var(--text-muted); margin: 8px 0 16px;">Create a blood request to broadcast emergency needs to matching registered donors.</p>
+                            <button class="btn btn-primary btn-sm" onclick="App.loadHospitalTab('hosp-create')">➕ Create Blood Request</button>
+                        </div>
+                    `;
+                } else {
+                    const pendingCount = reqs.filter(r => r.status === 'PENDING' || r.status === 'ACTIVE').length;
+                    const acceptedCount = reqs.filter(r => r.status === 'ACCEPTED').length;
+                    const completedCount = reqs.filter(r => r.status === 'COMPLETED' || r.status === 'FULFILLED').length;
+
+                    content.innerHTML = `
+                        <!-- Metrics Overview Banner -->
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 20px;">
+                            <div style="background: rgba(15, 23, 42, 0.7); padding: 12px 16px; border-radius: var(--radius-sm); border: 1px solid var(--border-glass);">
+                                <span style="font-size: 0.75rem; color: var(--text-muted);">Total Requests</span>
+                                <div style="font-size: 1.5rem; font-weight: 800; color: #ffffff;">${reqs.length}</div>
                             </div>
-                        `;
-                    } else {
-                        content.innerHTML = `
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                                <h4>My Hospital Blood Requests</h4>
-                                <button class="btn btn-primary btn-sm" onclick="App.loadHospitalTab('hosp-create')">➕ Post New Request</button>
+                            <div style="background: rgba(15, 23, 42, 0.7); padding: 12px 16px; border-radius: var(--radius-sm); border-left: 3px solid #fbbf24;">
+                                <span style="font-size: 0.75rem; color: var(--text-muted);">Pending Donors</span>
+                                <div style="font-size: 1.5rem; font-weight: 800; color: #fbbf24;">${pendingCount}</div>
                             </div>
-                            <div class="data-table-wrapper">
-                                <table class="data-table">
-                                    <thead>
+                            <div style="background: rgba(15, 23, 42, 0.7); padding: 12px 16px; border-radius: var(--radius-sm); border-left: 3px solid #34d399;">
+                                <span style="font-size: 0.75rem; color: var(--text-muted);">Accepted Donors</span>
+                                <div style="font-size: 1.5rem; font-weight: 800; color: #34d399;">${acceptedCount}</div>
+                            </div>
+                            <div style="background: rgba(15, 23, 42, 0.7); padding: 12px 16px; border-radius: var(--radius-sm); border-left: 3px solid #60a5fa;">
+                                <span style="font-size: 0.75rem; color: var(--text-muted);">Completed</span>
+                                <div style="font-size: 1.5rem; font-weight: 800; color: #60a5fa;">${completedCount}</div>
+                            </div>
+                        </div>
+
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                            <h4 style="color: #ffffff;">All Hospital Blood Requests</h4>
+                            <button class="btn btn-primary btn-sm" onclick="App.loadHospitalTab('hosp-create')">➕ Create Request</button>
+                        </div>
+
+                        <div class="data-table-wrapper">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Blood Group</th>
+                                        <th>Units</th>
+                                        <th>Urgency</th>
+                                        <th>Required Date</th>
+                                        <th>Matching Donors</th>
+                                        <th>Donor Responses</th>
+                                        <th>Overall Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${reqs.map(r => `
                                         <tr>
-                                            <th>Blood Group</th>
-                                            <th>Units</th>
-                                            <th>Urgency</th>
-                                            <th>Date</th>
-                                            <th>Matched Donors</th>
-                                            <th>Status</th>
-                                            <th>Action</th>
+                                            <td><span class="role-tag donor">${r.bloodGroup}</span></td>
+                                            <td><strong>${r.requiredUnits}</strong> Units</td>
+                                            <td><span class="demand-badge ${(r.urgency || 'HIGH').toLowerCase()}">${r.urgency}</span></td>
+                                            <td>${r.requiredDate || 'Immediate'}</td>
+                                            <td><strong style="color: #34d399;">${r.matchedDonorsCount || 0} matching</strong></td>
+                                            <td>
+                                                <div style="font-size: 0.85rem;">
+                                                    <span style="color: #34d399; font-weight: 700;">${r.acceptedDonorsCount || 0} Accepted</span>
+                                                    ${(r.rejectedDonorsCount || 0) > 0 ? `<span style="color: #f87171; margin-left: 6px;">(${r.rejectedDonorsCount} Rejected)</span>` : ''}
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <span class="status-pill ${(r.status || 'PENDING').toLowerCase()}">${r.status}</span>
+                                            </td>
+                                            <td>
+                                                <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                                                    <button class="btn btn-secondary btn-sm" onclick="App.viewRequestResponses(${r.id})" title="View Donor Responses">
+                                                        💬 Responses (${(r.acceptedDonorsCount || 0) + (r.rejectedDonorsCount || 0)})
+                                                    </button>
+                                                    ${r.status !== 'COMPLETED' && r.status !== 'FULFILLED' && r.status !== 'CANCELLED' ? `
+                                                        <button class="btn btn-primary btn-sm" onclick="App.completeHospitalRequest(${r.id})">
+                                                            ✓ Complete
+                                                        </button>
+                                                        <button class="btn btn-outline-danger btn-sm" onclick="App.cancelHospitalRequest(${r.id})">
+                                                            ✕
+                                                        </button>
+                                                    ` : ''}
+                                                </div>
+                                            </td>
                                         </tr>
-                                    </thead>
-                                    <tbody>
-                                        ${reqs.map(r => `
-                                            <tr>
-                                                <td><span class="role-tag donor">${r.bloodGroup}</span></td>
-                                                <td><strong>${r.requiredUnits}</strong></td>
-                                                <td><span class="demand-badge ${r.urgency === 'CRITICAL' ? 'critical' : 'low'}">${r.urgency}</span></td>
-                                                <td>${r.requiredDate || 'Immediate'}</td>
-                                                <td><strong style="color: #34d399;">${r.matchedDonorsCount} Donors</strong></td>
-                                                <td><span class="role-tag ${r.status === 'FULFILLED' ? 'donor' : 'hospital'}">${r.status}</span></td>
-                                                <td>
-                                                    ${r.status === 'ACTIVE' ? `
-                                                        <button class="btn btn-secondary btn-sm" onclick="App.findCompatibleForRequest('${r.bloodGroup}')">Match Donors</button>
-                                                        <button class="btn btn-primary btn-sm" onclick="App.fulfillHospitalRequest(${r.id})">Fulfill</button>
-                                                    ` : 'Completed ✓'}
-                                                </td>
-                                            </tr>
-                                        `).join('')}
-                                    </tbody>
-                                </table>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    `;
+                }
+            } else if (tabName === 'hosp-pending') {
+                const res = await Api.bloodRequests.getMyRequests();
+                const reqs = (res && res.data) ? res.data.filter(r => r.status === 'PENDING' || r.status === 'ACTIVE') : [];
+
+                if (reqs.length === 0) {
+                    content.innerHTML = `
+                        <div style="text-align: center; padding: 40px; background: rgba(15, 23, 42, 0.4); border-radius: var(--radius-sm);">
+                            <div style="font-size: 2.2rem; margin-bottom: 10px;">✅</div>
+                            <h4>No pending blood requests</h4>
+                            <p style="color: var(--text-muted); margin-top: 6px;">All your active requests have either been accepted or completed.</p>
+                        </div>
+                    `;
+                } else {
+                    content.innerHTML = `
+                        <div style="margin-bottom: 14px;">
+                            <h4 style="color: #fbbf24;">Pending Blood Requests (Awaiting Donor Response)</h4>
+                            <p style="font-size: 0.85rem; color: var(--text-muted);">Broadcasted to exact matching registered donors.</p>
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 12px;">
+                            ${reqs.map(r => `
+                                <div class="request-card" style="background: rgba(15, 23, 42, 0.8); border: 1px solid var(--border-glass); border-left: 4px solid #fbbf24; padding: 16px; border-radius: var(--radius-sm);">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                        <div style="display: flex; align-items: center; gap: 10px;">
+                                            <span style="font-size: 1.3rem; font-weight: 800; color: #fb7185;">🔴 ${r.bloodGroup}</span>
+                                            <strong>${r.requiredUnits} Units</strong>
+                                            <span class="demand-badge ${(r.urgency || 'HIGH').toLowerCase()}">${r.urgency}</span>
+                                        </div>
+                                        <span class="status-pill pending">PENDING</span>
+                                    </div>
+                                    <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 10px;">
+                                        Required Date: <strong>${r.requiredDate || 'Immediate'}</strong> | Location: <strong>${r.hospitalLocation || 'Chennai'}</strong> | Matching Donors: <strong style="color: #34d399;">${r.matchedDonorsCount || 0}</strong>
+                                    </div>
+                                    <div style="display: flex; gap: 8px;">
+                                        <button class="btn btn-secondary btn-sm" onclick="App.viewRequestResponses(${r.id})">Check Responses (${(r.acceptedDonorsCount || 0) + (r.rejectedDonorsCount || 0)})</button>
+                                        <button class="btn btn-outline-danger btn-sm" onclick="App.cancelHospitalRequest(${r.id})">Cancel Request</button>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
+                }
+            } else if (tabName === 'hosp-accepted') {
+                const res = await Api.bloodRequests.getHospitalResponses('ACCEPTED');
+                const accepted = (res && res.data) ? res.data : [];
+
+                if (accepted.length === 0) {
+                    content.innerHTML = `
+                        <div style="text-align: center; padding: 40px; background: rgba(15, 23, 42, 0.4); border-radius: var(--radius-sm);">
+                            <div style="font-size: 2.2rem; margin-bottom: 10px;">⏳</div>
+                            <h4>No accepted donors yet</h4>
+                            <p style="color: var(--text-muted); margin-top: 6px;">When a matching donor accepts your blood request, their details and contact information will appear here immediately.</p>
+                        </div>
+                    `;
+                } else {
+                    content.innerHTML = `
+                        <div style="margin-bottom: 14px;">
+                            <h4 style="color: #34d399;">✅ Donors Who Accepted Your Blood Requests (${accepted.length})</h4>
+                            <p style="font-size: 0.85rem; color: var(--text-muted);">Contact accepted donors to coordinate the donation.</p>
+                        </div>
+                        <div class="data-table-wrapper">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Donor Name</th>
+                                        <th>Blood Group</th>
+                                        <th>Contact Phone</th>
+                                        <th>Email</th>
+                                        <th>City</th>
+                                        <th>Request Info</th>
+                                        <th>Acceptance Time</th>
+                                        <th>Scheduled Date</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${accepted.map(d => `
+                                        <tr>
+                                            <td><strong>${d.donorName}</strong></td>
+                                            <td><span class="role-tag donor">${d.donorBloodGroup}</span></td>
+                                            <td>
+                                                <a href="tel:${d.donorPhone || ''}" style="color: #38bdf8; font-weight: 600; text-decoration: none;">
+                                                    📞 ${d.donorPhone || 'N/A'}
+                                                </a>
+                                            </td>
+                                            <td>
+                                                <a href="mailto:${d.donorEmail || ''}" style="color: #94a3b8; text-decoration: none;">
+                                                    ✉️ ${d.donorEmail || 'N/A'}
+                                                </a>
+                                            </td>
+                                            <td>${d.donorCity || 'Chennai'}</td>
+                                            <td>Request #${d.requestId} (${d.requestedBloodGroup})</td>
+                                            <td>${d.respondedAt ? new Date(d.respondedAt).toLocaleString() : 'Recent'}</td>
+                                            <td><strong style="color: #fbbf24;">${d.scheduledDate || 'Immediate'}</strong></td>
+                                            <td><span class="status-pill accepted">ACCEPTED ✓</span></td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    `;
+                }
+            } else if (tabName === 'hosp-responses') {
+                const res = await Api.bloodRequests.getHospitalResponses();
+                const allResponses = (res && res.data) ? res.data : [];
+
+                if (allResponses.length === 0) {
+                    content.innerHTML = `
+                        <div style="text-align: center; padding: 40px; background: rgba(15, 23, 42, 0.4); border-radius: var(--radius-sm);">
+                            <div style="font-size: 2.2rem; margin-bottom: 10px;">💬</div>
+                            <h4>No donor responses recorded yet</h4>
+                            <p style="color: var(--text-muted); margin-top: 6px;">Responses from matching donors (Accept or Reject) will be tracked here in real-time.</p>
+                        </div>
+                    `;
+                } else {
+                    const acceptedCount = allResponses.filter(r => r.status === 'ACCEPTED').length;
+                    const rejectedCount = allResponses.filter(r => r.status === 'REJECTED').length;
+
+                    content.innerHTML = `
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                            <div>
+                                <h4 style="color: #ffffff;">Donor Responses Tracking</h4>
+                                <span style="font-size: 0.82rem; color: var(--text-muted);">
+                                    <strong style="color: #34d399;">${acceptedCount} Accepted</strong> | <strong style="color: #f87171;">${rejectedCount} Rejected</strong>
+                                </span>
                             </div>
-                        `;
-                    }
+                        </div>
+                        <div class="data-table-wrapper">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Donor Name</th>
+                                        <th>Blood Group</th>
+                                        <th>Response Status</th>
+                                        <th>Request Info</th>
+                                        <th>Contact Details</th>
+                                        <th>Responded At</th>
+                                        <th>Notes</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${allResponses.map(r => `
+                                        <tr>
+                                            <td><strong>${r.donorName}</strong></td>
+                                            <td><span class="role-tag donor">${r.donorBloodGroup}</span></td>
+                                            <td>
+                                                <span class="status-pill ${r.status.toLowerCase()}">${r.status}</span>
+                                            </td>
+                                            <td>Request #${r.requestId} (${r.requestedBloodGroup})</td>
+                                            <td>
+                                                ${r.status === 'ACCEPTED' ? `
+                                                    <a href="tel:${r.donorPhone || ''}" style="color: #38bdf8; text-decoration: none;">📞 ${r.donorPhone || 'N/A'}</a>
+                                                ` : '<span style="color: var(--text-muted); font-size: 0.8rem;">Hidden</span>'}
+                                            </td>
+                                            <td>${r.respondedAt ? new Date(r.respondedAt).toLocaleString() : 'N/A'}</td>
+                                            <td style="font-size: 0.82rem; color: var(--text-muted); max-width: 180px;">${r.notes || '-'}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    `;
+                }
+            } else if (tabName === 'hosp-rejected') {
+                const res = await Api.bloodRequests.getHospitalResponses('REJECTED');
+                const rejected = (res && res.data) ? res.data : [];
+
+                content.innerHTML = `
+                    <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.25); padding: 14px 18px; border-radius: var(--radius-sm); margin-bottom: 16px;">
+                        <h4 style="color: #f87171; font-size: 0.95rem; margin-bottom: 4px;">ℹ️ Independent Donor Response Architecture</h4>
+                        <p style="font-size: 0.82rem; color: var(--text-muted); line-height: 1.4;">
+                            When a matching donor declines a request, their response is recorded here for tracking. The original blood request <strong>remains active in the database</strong> and continues to be available for other matching donors to accept.
+                        </p>
+                    </div>
+                    ${rejected.length === 0 ? `
+                        <div style="text-align: center; padding: 30px; color: var(--text-muted);">
+                            No donors have declined your requests.
+                        </div>
+                    ` : `
+                        <div class="data-table-wrapper">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Donor Name</th>
+                                        <th>Blood Group</th>
+                                        <th>Request Info</th>
+                                        <th>Response Status</th>
+                                        <th>Rejection Date</th>
+                                        <th>Notes</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${rejected.map(r => `
+                                        <tr>
+                                            <td><strong>${r.donorName}</strong></td>
+                                            <td><span class="role-tag donor">${r.donorBloodGroup}</span></td>
+                                            <td>Request #${r.requestId} (${r.requestedBloodGroup})</td>
+                                            <td><span class="status-pill rejected">REJECTED</span></td>
+                                            <td>${r.respondedAt ? new Date(r.respondedAt).toLocaleString() : 'N/A'}</td>
+                                            <td style="font-size: 0.82rem; color: var(--text-muted);">${r.notes || 'Declined by donor'}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    `}
+                `;
+            } else if (tabName === 'hosp-completed') {
+                const res = await Api.bloodRequests.getMyRequests();
+                const completed = (res && res.data) ? res.data.filter(r => r.status === 'COMPLETED' || r.status === 'FULFILLED') : [];
+
+                if (completed.length === 0) {
+                    content.innerHTML = `
+                        <div style="text-align: center; padding: 40px; background: rgba(15, 23, 42, 0.4); border-radius: var(--radius-sm);">
+                            <div style="font-size: 2.2rem; margin-bottom: 10px;">🏁</div>
+                            <h4>No completed blood requests yet</h4>
+                            <p style="color: var(--text-muted); margin-top: 6px;">When blood requests are fulfilled, they will be archived here.</p>
+                        </div>
+                    `;
+                } else {
+                    content.innerHTML = `
+                        <div style="margin-bottom: 14px;">
+                            <h4 style="color: #60a5fa;">Completed Hospital Blood Requests (${completed.length})</h4>
+                        </div>
+                        <div class="data-table-wrapper">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Request ID</th>
+                                        <th>Blood Group</th>
+                                        <th>Units</th>
+                                        <th>Urgency</th>
+                                        <th>Accepted Donors</th>
+                                        <th>Status</th>
+                                        <th>Created Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${completed.map(r => `
+                                        <tr>
+                                            <td>#${r.id}</td>
+                                            <td><span class="role-tag donor">${r.bloodGroup}</span></td>
+                                            <td><strong>${r.requiredUnits}</strong> Units</td>
+                                            <td><span class="demand-badge ${(r.urgency || 'HIGH').toLowerCase()}">${r.urgency}</span></td>
+                                            <td><strong style="color: #34d399;">${r.acceptedDonorsCount || 0} Donors</strong></td>
+                                            <td><span class="status-pill completed">${r.status}</span></td>
+                                            <td>${r.createdAt ? new Date(r.createdAt).toLocaleDateString() : 'N/A'}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    `;
+                }
+            } else if (tabName === 'hosp-notifications') {
+                const res = await Api.bloodRequests.getNotifications();
+                const notifications = (res && res.data) ? res.data : [];
+
+                if (notifications.length === 0) {
+                    content.innerHTML = `
+                        <div style="text-align: center; padding: 40px; background: rgba(15, 23, 42, 0.4); border-radius: var(--radius-sm);">
+                            <div style="font-size: 2.2rem; margin-bottom: 10px;">🔔</div>
+                            <h4>No notifications yet</h4>
+                            <p style="color: var(--text-muted); margin-top: 6px;">When donors accept your blood requests, real-time alerts will appear here.</p>
+                        </div>
+                    `;
+                } else {
+                    content.innerHTML = `
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                            <div>
+                                <h4 style="color: #ffffff;">Hospital Notifications</h4>
+                                <span style="font-size: 0.8rem; color: var(--text-muted);">Real-time alerts on donor responses</span>
+                            </div>
+                            <button class="btn btn-secondary btn-sm" onclick="App.markAllNotificationsRead()">
+                                ✓ Mark All as Read
+                            </button>
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 10px;">
+                            ${notifications.map(n => `
+                                <div class="notif-card ${n.isRead ? '' : 'unread'}" id="notif-item-${n.id}">
+                                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
+                                        <div style="display: flex; align-items: center; gap: 8px;">
+                                            <span style="font-size: 1.2rem;">🩸</span>
+                                            <strong style="color: #ffffff; font-size: 1rem;">${n.title || 'Donor Response'}</strong>
+                                            ${!n.isRead ? '<span class="badge-count" style="margin-left: 4px;">NEW</span>' : ''}
+                                        </div>
+                                        <span style="font-size: 0.78rem; color: var(--text-muted);">
+                                            ${n.createdAt ? new Date(n.createdAt).toLocaleString() : ''}
+                                        </span>
+                                    </div>
+                                    <p style="font-size: 0.92rem; color: #f1f5f9; margin-bottom: 8px; font-weight: 500;">
+                                        ${n.message}
+                                    </p>
+                                    ${n.donorName ? `
+                                        <div style="background: rgba(15, 23, 42, 0.6); padding: 8px 12px; border-radius: var(--radius-sm); font-size: 0.85rem; display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 8px;">
+                                            <div>Donor: <strong style="color: #ffffff;">${n.donorName}</strong> (${n.donorBloodGroup || 'Matched'})</div>
+                                            ${n.donorContact ? `<div>Phone: <a href="tel:${n.donorContact}" style="color: #38bdf8; text-decoration: none; font-weight: 600;">📞 ${n.donorContact}</a></div>` : ''}
+                                            ${n.donorEmail ? `<div>Email: <a href="mailto:${n.donorEmail}" style="color: #94a3b8; text-decoration: none;">✉️ ${n.donorEmail}</a></div>` : ''}
+                                        </div>
+                                    ` : ''}
+                                    ${!n.isRead ? `
+                                        <div style="text-align: right;">
+                                            <button class="btn btn-secondary btn-sm" style="font-size: 0.75rem; padding: 2px 8px;" onclick="App.markNotificationRead(${n.id})">
+                                                Mark Read
+                                            </button>
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
                 }
             } else if (tabName === 'hosp-create') {
                 content.innerHTML = `
                     <form id="hosp-dash-create-form" onsubmit="App.handleHospitalCreateRequest(event)">
                         <div class="form-row">
                             <div class="form-group">
-                                <label class="form-label">Blood Group Required</label>
+                                <label class="form-label">Blood Group Required (Exact Matching Donors Only)</label>
                                 <select id="dash-req-blood" class="form-select" required>
                                     <option value="O+">O+</option>
                                     <option value="O-">O-</option>
@@ -782,7 +1197,7 @@ const App = {
                             <input type="text" id="dash-req-notes" class="form-input" placeholder="e.g. Critical requirement for orthopedic / trauma unit">
                         </div>
                         <button type="submit" class="btn btn-primary" style="width: 100%;">
-                            🚨 Dispatch Blood Request to Compatible Donors
+                            🚨 Dispatch Blood Request to Matching Donors
                         </button>
                     </form>
                 `;
@@ -854,6 +1269,57 @@ const App = {
             }
         } catch (e) {
             content.innerHTML = `<p style="color: var(--primary); text-align: center;">Error: ${e.message}</p>`;
+        }
+    },
+
+    async completeHospitalRequest(requestId) {
+        try {
+            await Api.bloodRequests.completeRequest(requestId);
+            this.showToast('Blood request marked as COMPLETED! Thank you.', 'success');
+            this.loadHospitalTab('hosp-requests');
+            this.loadHospitalRequests();
+            this.loadStatistics();
+        } catch (e) {
+            this.showToast(e.message, 'error');
+        }
+    },
+
+    async cancelHospitalRequest(requestId) {
+        if (!confirm('Are you sure you want to cancel this blood request?')) return;
+        try {
+            await Api.bloodRequests.updateStatus(requestId, 'CANCELLED');
+            this.showToast('Blood request cancelled.', 'info');
+            this.loadHospitalTab('hosp-requests');
+            this.loadHospitalRequests();
+            this.loadStatistics();
+        } catch (e) {
+            this.showToast(e.message, 'error');
+        }
+    },
+
+    async viewRequestResponses(requestId) {
+        this.loadHospitalTab('hosp-responses');
+    },
+
+    async markNotificationRead(id) {
+        try {
+            await Api.bloodRequests.markNotificationRead(id);
+            await this.updateHospitalNotificationBadge();
+            const el = document.getElementById(`notif-item-${id}`);
+            if (el) el.classList.remove('unread');
+        } catch (e) {
+            this.showToast(e.message, 'error');
+        }
+    },
+
+    async markAllNotificationsRead() {
+        try {
+            await Api.bloodRequests.markAllNotificationsRead();
+            await this.updateHospitalNotificationBadge();
+            this.loadHospitalTab('hosp-notifications');
+            this.showToast('All notifications marked as read', 'success');
+        } catch (e) {
+            this.showToast(e.message, 'error');
         }
     },
 
@@ -1007,10 +1473,34 @@ const App = {
             return;
         }
         this.openModal('donor-dashboard-modal');
+        this.startDonorPolling();
         this.loadDonorTab('donor-incoming');
     },
 
-    async loadDonorTab(tabName) {
+    startDonorPolling() {
+        this.stopDonorPolling();
+        this.donorPollingTimer = setInterval(() => {
+            const modal = document.getElementById('donor-dashboard-modal');
+            if (modal && modal.classList.contains('active')) {
+                const activeTabBtn = document.querySelector('.donor-tab-btn.active');
+                const tab = activeTabBtn ? activeTabBtn.dataset.tab : 'donor-incoming';
+                if (tab === 'donor-incoming' || tab === 'donor-accepted-tab') {
+                    this.loadDonorTab(tab, true);
+                }
+            } else {
+                this.stopDonorPolling();
+            }
+        }, 12000);
+    },
+
+    stopDonorPolling() {
+        if (this.donorPollingTimer) {
+            clearInterval(this.donorPollingTimer);
+            this.donorPollingTimer = null;
+        }
+    },
+
+    async loadDonorTab(tabName, isSilent = false) {
         document.querySelectorAll('.donor-tab-btn').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.tab === tabName);
         });
@@ -1018,7 +1508,9 @@ const App = {
         const content = document.getElementById('donor-tab-content');
         if (!content) return;
 
-        content.innerHTML = `<p style="text-align: center; padding: 30px; color: var(--text-muted);">Loading donor data...</p>`;
+        if (!isSilent) {
+            content.innerHTML = `<p style="text-align: center; padding: 30px; color: var(--text-muted);">Loading donor data...</p>`;
+        }
 
         try {
             if (tabName === 'donor-incoming') {
@@ -1032,7 +1524,7 @@ const App = {
                 const demandRes = await Api.bloodRequests.getHighlyDemanded().catch(() => ({ data: [] }));
                 const demanded = (demandRes && demandRes.data) ? demandRes.data : [];
 
-                // 3. Fetch matching incoming requests for this donor (compatible only)
+                // 3. Fetch matching incoming requests for this donor (exact match, excluding rejected)
                 const reqRes = await Api.bloodRequests.getIncomingForDonor().catch(() => ({ data: [] }));
                 const requests = (reqRes && reqRes.data) ? reqRes.data : [];
 
@@ -1082,10 +1574,10 @@ const App = {
                     <div>
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; border-bottom: 1px solid var(--border-glass); padding-bottom: 8px;">
                             <h4 style="color: #ffffff; font-size: 1.1rem; display: flex; align-items: center; gap: 8px;">
-                                🩸 MATCHING BLOOD REQUESTS
+                                🩸 RECEIVED BLOOD REQUESTS
                             </h4>
                             <span style="font-size: 0.78rem; color: #34d399; font-weight: 600;">
-                                Compatible with your blood group (${donorBloodGroup})
+                                Exact match for your registered blood group (${donorBloodGroup})
                             </span>
                         </div>
                         ${requests.length === 0 ? `
@@ -1093,33 +1585,45 @@ const App = {
                                 <div style="font-size: 2.5rem; margin-bottom: 10px;">✅</div>
                                 <h4>No matching hospital requests right now</h4>
                                 <p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 6px;">
-                                    When a hospital creates a request compatible with your <strong>${donorBloodGroup}</strong> blood group, it will be listed here.
+                                    When a hospital creates a blood request for <strong>${donorBloodGroup}</strong> blood, it will appear here instantly.
                                 </p>
                             </div>
                         ` : `
                             <div style="display: flex; flex-direction: column; gap: 16px;">
                                 ${requests.map(r => `
-                                    <div class="request-card ${(r.urgency || 'HIGH').toLowerCase() === 'critical' ? 'critical' : 'high'}" id="request-card-${r.id}">
+                                    <div class="request-card ${(r.urgency || 'HIGH').toLowerCase() === 'critical' ? 'critical' : 'high'}" id="request-card-${r.id}" style="transition: all 0.3s ease;">
                                         <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
                                             <div>
                                                 <h4 style="color: #ffffff; font-size: 1.15rem; margin-bottom: 4px;">🏥 ${r.hospitalName}</h4>
-                                                <span style="font-size: 0.82rem; color: var(--text-muted);">📍 ${r.hospitalLocation || 'Chennai'}</span>
+                                                <span style="font-size: 0.82rem; color: var(--text-muted);">📍 Location: <strong>${r.hospitalLocation || 'Hospital Center'}</strong></span>
                                             </div>
-                                            <span class="demand-badge ${(r.urgency || 'HIGH').toLowerCase() === 'critical' ? 'critical' : 'low'}">${r.urgency} NEED</span>
+                                            <div style="display: flex; gap: 8px; align-items: center;">
+                                                <span class="demand-badge ${(r.urgency || 'HIGH').toLowerCase() === 'critical' ? 'critical' : 'low'}">
+                                                    ${r.urgency} URGENCY
+                                                </span>
+                                                <span class="status-pill ${(r.status || 'PENDING').toLowerCase()}">
+                                                    ${r.status || 'PENDING'}
+                                                </span>
+                                            </div>
                                         </div>
 
-                                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 12px; background: rgba(15, 23, 42, 0.6); padding: 10px 14px; border-radius: var(--radius-sm);">
+                                        <!-- Request Info Grid -->
+                                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 12px; background: rgba(15, 23, 42, 0.6); padding: 12px 14px; border-radius: var(--radius-sm);">
                                             <div>
                                                 <span style="font-size: 0.75rem; color: var(--text-muted);">Required Blood Group:</span>
-                                                <div style="font-size: 1.15rem; font-weight: 800; color: #fb7185;">${r.bloodGroup}</div>
+                                                <div style="font-size: 1.25rem; font-weight: 800; color: #fb7185;">${r.bloodGroup}</div>
                                             </div>
                                             <div>
                                                 <span style="font-size: 0.75rem; color: var(--text-muted);">Units Required:</span>
-                                                <div style="font-size: 1.15rem; font-weight: 800; color: #ffffff;">${r.requiredUnits} Units</div>
+                                                <div style="font-size: 1.25rem; font-weight: 800; color: #ffffff;">${r.requiredUnits} Units</div>
+                                            </div>
+                                            <div>
+                                                <span style="font-size: 0.75rem; color: var(--text-muted);">Request Date:</span>
+                                                <div style="font-size: 0.95rem; font-weight: 600; color: #94a3b8;">${r.createdAt ? new Date(r.createdAt).toLocaleDateString() : 'Today'}</div>
                                             </div>
                                             <div>
                                                 <span style="font-size: 0.75rem; color: var(--text-muted);">Deadline:</span>
-                                                <div style="font-size: 1rem; font-weight: 700; color: #fbbf24;">${r.requiredDate || 'Immediate'}</div>
+                                                <div style="font-size: 0.95rem; font-weight: 700; color: #fbbf24;">${r.requiredDate || 'Immediate'}</div>
                                             </div>
                                         </div>
 
@@ -1127,47 +1631,112 @@ const App = {
                                             ${r.notes || 'Emergency requirement for hospitalized patient.'}
                                         </p>
 
-                                        <div id="request-btn-box-${r.id}" style="display: flex; gap: 10px;">
-                                            <button class="btn btn-primary btn-sm" style="flex: 1;" onclick="App.showScheduleForm(${r.id}, '${r.hospitalName}', '${r.bloodGroup}', ${r.requiredUnits}, '${r.requiredDate || ''}')">
-                                                Accept Request
-                                            </button>
-                                            <button class="btn btn-secondary btn-sm" onclick="App.donorRespondRequest(${r.id}, 'REJECTED')">
-                                                Decline
-                                            </button>
-                                        </div>
+                                        ${r.donorResponseStatus === 'ACCEPTED' ? `
+                                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: rgba(52, 211, 153, 0.15); border: 1px solid rgba(52, 211, 153, 0.35); border-radius: var(--radius-sm);">
+                                                <span style="color: #34d399; font-weight: 700; font-size: 0.95rem;">✓ YOU ACCEPTED THIS REQUEST</span>
+                                                <span style="font-size: 0.82rem; color: #94a3b8;">Status: <strong>${r.status}</strong></span>
+                                            </div>
+                                        ` : `
+                                            <!-- Action Buttons: Accept and Reject -->
+                                            <div id="request-btn-box-${r.id}" style="display: flex; gap: 12px;">
+                                                <button class="btn btn-primary btn-sm" style="flex: 1; background: linear-gradient(135deg, #10b981 0%, #059669 100%); border: none; font-weight: 700; font-size: 0.95rem; padding: 9px 16px;" onclick="App.showScheduleForm(${r.id}, '${r.hospitalName}', '${r.bloodGroup}', ${r.requiredUnits}, '${r.requiredDate || ''}')">
+                                                    ✓ Accept
+                                                </button>
+                                                <button class="btn btn-secondary btn-sm" style="flex: 1; border-color: rgba(239, 68, 68, 0.5); color: #f87171; font-weight: 700; font-size: 0.95rem; padding: 9px 16px;" onclick="App.donorRejectRequest(${r.id})">
+                                                    ✕ Reject
+                                                </button>
+                                            </div>
 
-                                        <!-- Inline Schedule Donation Box -->
-                                        <div id="schedule-box-${r.id}" style="display: none; margin-top: 14px; background: rgba(15, 23, 42, 0.95); padding: 18px; border-radius: var(--radius-sm); border: 1px solid var(--border-glass);">
-                                            <h4 style="color: #34d399; font-size: 1rem; margin-bottom: 6px;">🗓 SCHEDULE DONATION</h4>
-                                            <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 14px;">
-                                                Selected donation date must be before or on request deadline: <strong style="color: #fbbf24;">${r.requiredDate || 'Immediate'}</strong>
-                                            </p>
-                                            <div class="form-row" style="margin-bottom: 12px;">
-                                                <div class="form-group" style="margin-bottom: 0;">
-                                                    <label class="form-label" style="font-size: 0.8rem;">Select Date</label>
-                                                    <input type="date" id="sched-date-${r.id}" class="form-input" max="${r.requiredDate || ''}">
+                                            <!-- Inline Schedule Donation Box -->
+                                            <div id="schedule-box-${r.id}" style="display: none; margin-top: 14px; background: rgba(15, 23, 42, 0.95); padding: 18px; border-radius: var(--radius-sm); border: 1px solid var(--border-glass);">
+                                                <h4 style="color: #34d399; font-size: 1rem; margin-bottom: 6px;">🗓 CONFIRM BLOOD DONATION</h4>
+                                                <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 14px;">
+                                                    Hospital will be notified with your donor contact details. Scheduled date must be before deadline: <strong style="color: #fbbf24;">${r.requiredDate || 'Immediate'}</strong>
+                                                </p>
+                                                <div class="form-row" style="margin-bottom: 12px;">
+                                                    <div class="form-group" style="margin-bottom: 0;">
+                                                        <label class="form-label" style="font-size: 0.8rem;">Donation Date</label>
+                                                        <input type="date" id="sched-date-${r.id}" class="form-input" max="${r.requiredDate || ''}">
+                                                    </div>
+                                                    <div class="form-group" style="margin-bottom: 0;">
+                                                        <label class="form-label" style="font-size: 0.8rem;">Preferred Time</label>
+                                                        <input type="time" id="sched-time-${r.id}" class="form-input" value="10:00">
+                                                    </div>
                                                 </div>
-                                                <div class="form-group" style="margin-bottom: 0;">
-                                                    <label class="form-label" style="font-size: 0.8rem;">Select Time</label>
-                                                    <input type="time" id="sched-time-${r.id}" class="form-input" value="10:00">
+                                                <div id="sched-err-${r.id}" style="color: #f87171; font-size: 0.85rem; margin-bottom: 10px; display: none;"></div>
+                                                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                                                    <button class="btn btn-primary btn-sm" style="flex: 2; background: linear-gradient(135deg, #10b981 0%, #059669 100%); border: none;" onclick="App.confirmScheduleDonation(${r.id}, '${r.requiredDate || ''}')">
+                                                        Confirm Schedule
+                                                    </button>
+                                                    <button class="btn btn-secondary btn-sm" style="flex: 1;" onclick="App.confirmDirectAccept(${r.id})">
+                                                        Accept Today
+                                                    </button>
+                                                    <button class="btn btn-secondary btn-sm" style="flex: 1;" onclick="App.hideScheduleForm(${r.id})">
+                                                        Cancel
+                                                    </button>
                                                 </div>
                                             </div>
-                                            <div id="sched-err-${r.id}" style="color: #f87171; font-size: 0.85rem; margin-bottom: 10px; display: none;"></div>
-                                            <div style="display: flex; gap: 10px;">
-                                                <button class="btn btn-primary btn-sm" style="flex: 1;" onclick="App.confirmScheduleDonation(${r.id}, '${r.requiredDate || ''}')">
-                                                    Confirm Schedule
-                                                </button>
-                                                <button class="btn btn-secondary btn-sm" onclick="App.hideScheduleForm(${r.id})">
-                                                    Cancel
-                                                </button>
-                                            </div>
-                                        </div>
+                                        `}
                                     </div>
                                 `).join('')}
                             </div>
                         `}
                     </div>
                 `;
+            } else if (tabName === 'donor-accepted-tab') {
+                const reqRes = await Api.bloodRequests.getIncomingForDonor().catch(() => ({ data: [] }));
+                const all = (reqRes && reqRes.data) ? reqRes.data : [];
+                const accepted = all.filter(r => r.donorResponseStatus === 'ACCEPTED');
+
+                if (accepted.length === 0) {
+                    content.innerHTML = `
+                        <div style="text-align: center; padding: 40px; background: rgba(15, 23, 42, 0.4); border-radius: var(--radius-sm);">
+                            <div style="font-size: 2.2rem; margin-bottom: 10px;">📋</div>
+                            <h4>No accepted blood requests yet</h4>
+                            <p style="color: var(--text-muted); margin-top: 6px;">When you accept an incoming blood request, it will be tracked here.</p>
+                            <button class="btn btn-primary btn-sm" style="margin-top: 14px;" onclick="App.loadDonorTab('donor-incoming')">
+                                View Received Requests
+                            </button>
+                        </div>
+                    `;
+                } else {
+                    content.innerHTML = `
+                        <div style="margin-bottom: 16px;">
+                            <h4 style="color: #34d399;">✅ Blood Requests Accepted by You (${accepted.length})</h4>
+                            <p style="font-size: 0.85rem; color: var(--text-muted);">The hospital has been notified and can view your contact information to coordinate donation.</p>
+                        </div>
+                        <div class="data-table-wrapper">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Hospital</th>
+                                        <th>Blood Group</th>
+                                        <th>Units</th>
+                                        <th>Location</th>
+                                        <th>Urgency</th>
+                                        <th>Request Date</th>
+                                        <th>Overall Status</th>
+                                        <th>Your Response</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${accepted.map(r => `
+                                        <tr>
+                                            <td><strong>🏥 ${r.hospitalName}</strong></td>
+                                            <td><span class="role-tag donor">${r.bloodGroup}</span></td>
+                                            <td><strong>${r.requiredUnits}</strong> Units</td>
+                                            <td>${r.hospitalLocation || 'Hospital Center'}</td>
+                                            <td><span class="demand-badge ${(r.urgency || 'HIGH').toLowerCase()}">${r.urgency}</span></td>
+                                            <td>${r.createdAt ? new Date(r.createdAt).toLocaleDateString() : (r.requiredDate || 'Immediate')}</td>
+                                            <td><span class="status-pill ${(r.status || 'ACCEPTED').toLowerCase()}">${r.status}</span></td>
+                                            <td><span class="status-pill accepted">ACCEPTED ✓</span></td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    `;
+                }
             } else if (tabName === 'donor-status') {
                 const donorRes = await Api.donors.getMyProfile().catch(() => null);
                 const donor = donorRes ? donorRes.data : null;
@@ -1388,11 +1957,63 @@ const App = {
         }
     },
 
+    async confirmDirectAccept(requestId) {
+        try {
+            const today = new Date().toISOString().split('T')[0];
+            await Api.bloodRequests.respondToRequest(
+                requestId,
+                'ACCEPTED',
+                today,
+                '10:00',
+                'Voluntary donation accepted by donor'
+            );
+            this.showToast('Blood request ACCEPTED! Hospital has been notified. 🩸', 'success');
+            await this.loadDonorTab('donor-incoming');
+        } catch (err) {
+            this.showToast(err.message || 'Failed to accept request', 'error');
+        }
+    },
+
+    async donorRejectRequest(requestId) {
+        if (!confirm('Are you sure you want to decline this blood request? It will be permanently removed from your dashboard.')) {
+            return;
+        }
+
+        // 1. Immediately remove element from DOM for instant response
+        const card = document.getElementById(`request-card-${requestId}`);
+        if (card) {
+            card.style.transition = 'all 0.3s ease';
+            card.style.opacity = '0';
+            card.style.transform = 'translateX(-20px)';
+            setTimeout(() => { if (card && card.parentNode) card.remove(); }, 300);
+        }
+
+        try {
+            // 2. Persist REJECTED status to database
+            await Api.bloodRequests.respondToRequest(
+                requestId,
+                'REJECTED',
+                null,
+                null,
+                'Declined by donor'
+            );
+            this.showToast('Blood request declined and permanently removed from dashboard.', 'info');
+            // 3. Refresh from backend to verify DB persistence
+            await this.loadDonorTab('donor-incoming');
+        } catch (err) {
+            this.showToast(err.message || 'Failed to decline request', 'error');
+            await this.loadDonorTab('donor-incoming');
+        }
+    },
+
     async donorRespondRequest(requestId, status) {
+        if (status === 'REJECTED') {
+            return this.donorRejectRequest(requestId);
+        }
         try {
             await Api.bloodRequests.respondToRequest(requestId, status, null, null, 'Donor response from dashboard');
             if (status === 'ACCEPTED') {
-                this.showToast('Hospital blood request ACCEPTED! Donation is now scheduled.', 'success');
+                this.showToast('Hospital blood request ACCEPTED! Hospital notified.', 'success');
             } else {
                 this.showToast('Hospital blood request declined.', 'info');
             }
@@ -1554,8 +2175,7 @@ const App = {
             this.showToast('Access denied: Admin permissions required', 'error');
             return;
         }
-        this.openModal('admin-modal');
-        this.loadAdminTab('stats');
+        window.location.href = 'admin.html';
     },
 
     async loadAdminTab(tabName) {
@@ -1862,6 +2482,12 @@ const App = {
     },
 
     closeModal(modalId) {
+        if (modalId === 'hospital-modal') {
+            this.stopHospitalPolling();
+        }
+        if (modalId === 'donor-dashboard-modal') {
+            this.stopDonorPolling();
+        }
         const modal = document.getElementById(modalId);
         if (modal) {
             modal.classList.remove('active');

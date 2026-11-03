@@ -22,6 +22,11 @@ public class BloodRequestResponse {
     private String notes;
     private RequestStatus status;
     private long matchedDonorsCount;
+    private String donorResponseStatus;
+    private LocalDateTime respondedAt;
+    private java.util.List<DonorResponseDetailDto> donorResponses = new java.util.ArrayList<>();
+    private int acceptedDonorsCount;
+    private int rejectedDonorsCount;
     private LocalDateTime createdAt;
 
     public BloodRequestResponse() {
@@ -145,5 +150,45 @@ public class BloodRequestResponse {
 
     public void setCreatedAt(LocalDateTime createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public String getDonorResponseStatus() {
+        return donorResponseStatus;
+    }
+
+    public void setDonorResponseStatus(String donorResponseStatus) {
+        this.donorResponseStatus = donorResponseStatus;
+    }
+
+    public LocalDateTime getRespondedAt() {
+        return respondedAt;
+    }
+
+    public void setRespondedAt(LocalDateTime respondedAt) {
+        this.respondedAt = respondedAt;
+    }
+
+    public java.util.List<DonorResponseDetailDto> getDonorResponses() {
+        return donorResponses;
+    }
+
+    public void setDonorResponses(java.util.List<DonorResponseDetailDto> donorResponses) {
+        this.donorResponses = donorResponses;
+    }
+
+    public int getAcceptedDonorsCount() {
+        return acceptedDonorsCount;
+    }
+
+    public void setAcceptedDonorsCount(int acceptedDonorsCount) {
+        this.acceptedDonorsCount = acceptedDonorsCount;
+    }
+
+    public int getRejectedDonorsCount() {
+        return rejectedDonorsCount;
+    }
+
+    public void setRejectedDonorsCount(int rejectedDonorsCount) {
+        this.rejectedDonorsCount = rejectedDonorsCount;
     }
 }

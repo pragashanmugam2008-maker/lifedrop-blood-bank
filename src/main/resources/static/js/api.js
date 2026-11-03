@@ -8,15 +8,30 @@ const API_BASE_URL = (() => {
     if (typeof window === 'undefined') return '';
     if (window.LIFEDROP_API_URL) return window.LIFEDROP_API_URL.replace(/\/+$/, '');
     if (window.location.protocol === 'file:') return 'https://lifedrop-blood-bank-3ypa.onrender.com';
-    if (window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1')) {
+    
+    // Local development
+    const host = window.location.hostname;
+    if (host === 'localhost' || host === '127.0.0.1') {
         return window.location.port === '8080' ? '' : 'http://localhost:8080';
     }
-    return '';
+    
+    // Deployed directly on Render backend
+    if (window.location.origin.includes('onrender.com')) {
+        return '';
+    }
+    
+    // Deployed on Vercel or any other external host: direct CORS connection to Render production backend
+    return 'https://lifedrop-blood-bank-3ypa.onrender.com';
 })();
 
 const API_PREFIX = `${API_BASE_URL}/api`;
 
 const Api = {
+    // Generate unique request correlation ID for tracing
+    generateCorrelationId() {
+        return 'ld-' + Date.now().toString(36) + '-' + Math.random().toString(36).substring(2, 8);
+    },
+
     // JWT Token Storage Helper
     getToken() {
         return localStorage.getItem('lifedrop_jwt_token');
@@ -52,11 +67,13 @@ const Api = {
         localStorage.removeItem('lifedrop_user');
     },
 
-    // Generic Fetch Wrapper with AbortController timeout & actionable error messages
+    // Generic Fetch Wrapper with AbortController timeout, correlation tracking & actionable errors
     async request(endpoint, options = {}) {
+        const correlationId = options.correlationId || this.generateCorrelationId();
         const url = `${API_PREFIX}${endpoint}`;
         const headers = {
             'Content-Type': 'application/json',
+            'X-Correlation-ID': correlationId,
             ...(options.headers || {})
         };
 
@@ -65,7 +82,7 @@ const Api = {
             headers['Authorization'] = `Bearer ${token}`;
         }
 
-        const timeoutMs = options.timeout || 35000;
+        const timeoutMs = options.timeout || 30000;
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -93,7 +110,7 @@ const Api = {
             if (error.message === 'Failed to fetch' || error.message.includes('NetworkError')) {
                 throw new Error('Network error: Unable to reach LifeDrop backend server. Please verify your connection.');
             }
-            console.error(`API Error on [${options.method || 'GET'} ${endpoint}]:`, error);
+            console.error(`[LifeDrop API][${correlationId}] Error on [${options.method || 'GET'} ${endpoint}]:`, error);
             throw error;
         }
     },
@@ -103,17 +120,47 @@ const Api = {
     // ==========================================
     auth: {
         async login(email, password) {
-            return Api.request('/auth/login', {
-                method: 'POST',
-                body: JSON.stringify({ email, password })
-            });
+            const correlationId = Api.generateCorrelationId();
+            const startTime = performance.now();
+            console.log(`[LifeDrop Auth][${correlationId}] Initiating login request for user: ${email}`);
+
+            try {
+                const res = await Api.request('/auth/login', {
+                    method: 'POST',
+                    correlationId,
+                    timeout: 25000,
+                    body: JSON.stringify({ email, password })
+                });
+                const elapsed = Math.round(performance.now() - startTime);
+                console.log(`[LifeDrop Auth][${correlationId}] Login request succeeded in ${elapsed}ms`);
+                return res;
+            } catch (err) {
+                const elapsed = Math.round(performance.now() - startTime);
+                console.error(`[LifeDrop Auth][${correlationId}] Login request failed after ${elapsed}ms:`, err.message);
+                throw err;
+            }
         },
 
         async register(formData) {
-            return Api.request('/auth/register', {
-                method: 'POST',
-                body: JSON.stringify(formData)
-            });
+            const correlationId = Api.generateCorrelationId();
+            const startTime = performance.now();
+            console.log(`[LifeDrop Auth][${correlationId}] Initiating registration request for email: ${formData.email} (Role: ${formData.role})`);
+
+            try {
+                const res = await Api.request('/auth/register', {
+                    method: 'POST',
+                    correlationId,
+                    timeout: 25000,
+                    body: JSON.stringify(formData)
+                });
+                const elapsed = Math.round(performance.now() - startTime);
+                console.log(`[LifeDrop Auth][${correlationId}] Registration request succeeded in ${elapsed}ms`);
+                return res;
+            } catch (err) {
+                const elapsed = Math.round(performance.now() - startTime);
+                console.error(`[LifeDrop Auth][${correlationId}] Registration request failed after ${elapsed}ms:`, err.message);
+                throw err;
+            }
         },
 
         async getMe() {
@@ -278,6 +325,37 @@ const Api = {
             return Api.request(`/blood-requests/${id}/status`, {
                 method: 'PUT',
                 body: JSON.stringify({ status })
+            });
+        },
+
+        async getHospitalResponses(status = null) {
+            const qs = status ? `?status=${status}` : '';
+            return Api.request(`/blood-requests/responses${qs}`);
+        },
+
+        async getResponsesForRequest(requestId) {
+            return Api.request(`/blood-requests/${requestId}/responses`);
+        },
+
+        async getNotifications() {
+            return Api.request('/blood-requests/notifications');
+        },
+
+        async markNotificationRead(notificationId) {
+            return Api.request(`/blood-requests/notifications/${notificationId}/read`, {
+                method: 'PUT'
+            });
+        },
+
+        async markAllNotificationsRead() {
+            return Api.request('/blood-requests/notifications/read-all', {
+                method: 'PUT'
+            });
+        },
+
+        async completeRequest(requestId) {
+            return Api.request(`/blood-requests/${requestId}/complete`, {
+                method: 'PUT'
             });
         },
 

@@ -63,7 +63,7 @@ public class BloodRequest {
     @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
-    private RequestStatus status = RequestStatus.ACTIVE;
+    private RequestStatus status = RequestStatus.PENDING;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -83,13 +83,13 @@ public class BloodRequest {
         this.urgency = urgency != null ? urgency : RequestUrgency.HIGH;
         this.requiredDate = requiredDate != null ? requiredDate : LocalDate.now().plusDays(2);
         this.contactPhone = contactPhone != null ? contactPhone : requester.getPhone();
-        this.status = RequestStatus.ACTIVE;
+        this.status = RequestStatus.PENDING;
     }
 
     @PrePersist
     protected void onCreate() {
         this.createdAt = LocalDateTime.now();
-        if (this.status == null) this.status = RequestStatus.ACTIVE;
+        if (this.status == null) this.status = RequestStatus.PENDING;
         if (this.urgency == null) this.urgency = RequestUrgency.HIGH;
         if (this.requiredUnits == null) this.requiredUnits = 1;
         if (this.hospitalName == null && this.hospital != null) {

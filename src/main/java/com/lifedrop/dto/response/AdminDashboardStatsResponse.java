@@ -11,6 +11,10 @@ public class AdminDashboardStatsResponse {
     private long totalInventoryUnits;
     private long livesHelped;
     private long referralRewards;
+    private long totalRequests;
+    private long pendingRequests;
+    private long approvedRequests;
+    private long rejectedRequests;
 
     public AdminDashboardStatsResponse() {
     }
@@ -93,5 +97,37 @@ public class AdminDashboardStatsResponse {
 
     public void setReferralRewards(long referralRewards) {
         this.referralRewards = referralRewards;
+    }
+
+    public long getTotalRequests() {
+        return totalRequests;
+    }
+
+    public void setTotalRequests(long totalRequests) {
+        this.totalRequests = totalRequests;
+    }
+
+    public long getPendingRequests() {
+        return pendingRequests;
+    }
+
+    public void setPendingRequests(long pendingRequests) {
+        this.pendingRequests = pendingRequests;
+    }
+
+    public long getApprovedRequests() {
+        return approvedRequests;
+    }
+
+    public void setApprovedRequests(long approvedRequests) {
+        this.approvedRequests = approvedRequests;
+    }
+
+    public long getRejectedRequests() {
+        return rejectedRequests;
+    }
+
+    public void setRejectedRequests(long rejectedRequests) {
+        this.rejectedRequests = rejectedRequests;
     }
 }

@@ -11,6 +11,7 @@ import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "donors", indexes = {
+    @Index(name = "idx_donor_user", columnList = "user_id"),
     @Index(name = "idx_donor_blood_group", columnList = "blood_group"),
     @Index(name = "idx_donor_city", columnList = "city"),
     @Index(name = "idx_donor_available", columnList = "availability_status")

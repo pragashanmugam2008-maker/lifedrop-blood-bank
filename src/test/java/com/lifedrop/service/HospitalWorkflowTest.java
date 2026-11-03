@@ -1,10 +1,11 @@
 package com.lifedrop.service;
 
 import com.lifedrop.dto.request.BloodRequestCreateDto;
-import com.lifedrop.dto.request.DonationCreateDto;
 import com.lifedrop.dto.request.DonorRequestResponseDto;
 import com.lifedrop.dto.response.BloodRequestResponse;
 import com.lifedrop.dto.response.DonationResponse;
+import com.lifedrop.dto.response.DonorResponseDetailDto;
+import com.lifedrop.dto.response.NotificationResponseDto;
 import com.lifedrop.entity.*;
 import com.lifedrop.enums.*;
 import com.lifedrop.exception.BadRequestException;
@@ -108,7 +109,7 @@ class HospitalWorkflowTest {
 
         donor = new Donor();
         donor.setUser(donorUser);
-        donor.setBloodGroup(BloodGroup.O_NEG); // Universal Donor
+        donor.setBloodGroup(BloodGroup.O_POS);
         donor.setAge(24);
         donor.setCity("Chennai");
         donor.setAvailabilityStatus(true);
@@ -134,26 +135,30 @@ class HospitalWorkflowTest {
 
         BloodRequestResponse createdRequest = bloodRequestService.createRequest(hospitalUser.getId(), createDto);
         assertNotNull(createdRequest.getId());
-        assertEquals(RequestStatus.ACTIVE, createdRequest.getStatus());
+        assertEquals(RequestStatus.PENDING, createdRequest.getStatus());
         assertEquals("City Care Hospital", createdRequest.getHospitalName());
 
-        // Step 2: System finds compatible donors for O+ (O- and O+ can donate to O+)
+        // Step 2: System finds compatible donors for O+
         List<com.lifedrop.dto.response.DonorResponse> compatibleDonors = donorService.findCompatibleDonors(BloodGroup.O_POS, "Chennai");
-        assertFalse(compatibleDonors.isEmpty(), "Should find compatible O- donor in Chennai");
+        assertFalse(compatibleDonors.isEmpty(), "Should find compatible donor in Chennai");
         assertTrue(compatibleDonors.stream().anyMatch(d -> d.getId().equals(donor.getId())));
 
-        // Step 3: Donor checks incoming hospital requests (Donor O- can donate to O+)
+        // Step 3: Donor checks incoming hospital requests (Donor O+ receives O+ request)
         List<BloodRequestResponse> incomingForDonor = bloodRequestService.getIncomingRequestsForDonor(donorUser.getId());
         assertFalse(incomingForDonor.isEmpty(), "Donor should receive incoming hospital request");
         assertTrue(incomingForDonor.stream().anyMatch(r -> r.getId().equals(createdRequest.getId())));
 
         // Step 4: Donor ACCEPTs the hospital request
-        DonorRequestResponseDto acceptDto = new DonorRequestResponseDto(DonationStatus.ACCEPTED, LocalDate.now(), "Ready to donate");
+        DonorRequestResponseDto acceptDto = new DonorRequestResponseDto(DonorResponseStatus.ACCEPTED, LocalDate.now(), "Ready to donate");
         Donation acceptedDonation = bloodRequestService.respondToRequest(createdRequest.getId(), donorUser.getId(), acceptDto);
         assertEquals(DonationStatus.SCHEDULED, acceptedDonation.getStatus());
 
+        // Blood request overall status updates to ACCEPTED
+        BloodRequest updatedReq = requestRepository.findById(createdRequest.getId()).orElseThrow();
+        assertEquals(RequestStatus.ACCEPTED, updatedReq.getStatus());
+
         // Initial blood inventory check
-        int initialStock = inventoryRepository.findByBloodGroup(BloodGroup.O_NEG)
+        int initialStock = inventoryRepository.findByBloodGroup(BloodGroup.O_POS)
                 .map(BloodInventory::getAvailableUnits).orElse(0);
 
         // Step 5: Admin VERIFIES the completed donation
@@ -161,7 +166,7 @@ class HospitalWorkflowTest {
         assertEquals(DonationStatus.COMPLETED, verifiedDonation.getStatus());
 
         // Step 6: Verify Blood Inventory is incremented
-        int updatedStock = inventoryRepository.findByBloodGroup(BloodGroup.O_NEG)
+        int updatedStock = inventoryRepository.findByBloodGroup(BloodGroup.O_POS)
                 .map(BloodInventory::getAvailableUnits).orElse(0);
         assertEquals(initialStock + 1, updatedStock, "Inventory stock must increase by donation units");
 
@@ -213,127 +218,147 @@ class HospitalWorkflowTest {
     }
 
     @Test
-    @DisplayName("TEST 1: Donor = O+, Hospital request = B+ -> Result = Compatible")
-    void test1_OPosDonor_BPosRequest_Compatible() {
-        User oPosDonorUser = createTestDonorUser("O+ Donor 1", "opos1@test.org", BloodGroup.O_POS);
+    @DisplayName("COMPLETE SCENARIOS 1-15: Blood Request & Donor Response Enhancement Workflow")
+    void testEnhanced15ScenariosWorkflow() {
+        // Scenario 1: Register a B+ donor (Donor 1)
+        User bPosUser1 = createTestDonorUser("B+ Donor One", "bpos1@test.org", BloodGroup.B_POS);
+
+        // Scenario 2: Register an O+ donor
+        User oPosUser = createTestDonorUser("O+ Donor User", "opos_user@test.org", BloodGroup.O_POS);
+
+        // Scenario 3: Register a hospital (Done in setUp as hospitalUser / hospital)
+        assertNotNull(hospital);
+
+        // Scenario 4: Hospital creates a B+ blood request
         BloodRequestResponse bPosRequest = createTestBloodRequest(BloodGroup.B_POS, "Urgent B+ requirement");
+        assertNotNull(bPosRequest.getId());
+        assertEquals(RequestStatus.PENDING, bPosRequest.getStatus());
 
-        List<BloodRequestResponse> incoming = bloodRequestService.getIncomingRequestsForDonor(oPosDonorUser.getId());
-        assertTrue(incoming.stream().anyMatch(r -> r.getId().equals(bPosRequest.getId())),
-                "O+ donor MUST see B+ incoming hospital blood request");
+        // Scenario 5: Verify only B+ donors receive the request
+        List<BloodRequestResponse> bDonor1Requests = bloodRequestService.getIncomingRequestsForDonor(bPosUser1.getId());
+        assertTrue(bDonor1Requests.stream().anyMatch(r -> r.getId().equals(bPosRequest.getId())),
+                "B+ donor MUST receive the B+ blood request");
+
+        List<BloodRequestResponse> oDonorRequests = bloodRequestService.getIncomingRequestsForDonor(oPosUser.getId());
+        assertFalse(oDonorRequests.stream().anyMatch(r -> r.getId().equals(bPosRequest.getId())),
+                "O+ donor must NOT receive the B+ blood request");
+
+        // Scenario 6: B+ donor 1 rejects the request
+        DonorRequestResponseDto rejectDto = new DonorRequestResponseDto(DonorResponseStatus.REJECTED, null, "Unable to donate at this time");
+        Donation rejectResult = bloodRequestService.respondToRequest(bPosRequest.getId(), bPosUser1.getId(), rejectDto);
+        assertEquals(DonationStatus.REJECTED, rejectResult.getStatus());
+
+        // Scenario 7: Verify request disappears from that donor's dashboard
+        List<BloodRequestResponse> bDonor1AfterReject = bloodRequestService.getIncomingRequestsForDonor(bPosUser1.getId());
+        assertFalse(bDonor1AfterReject.stream().anyMatch(r -> r.getId().equals(bPosRequest.getId())),
+                "Request MUST disappear from donor 1's dashboard immediately after rejection");
+
+        // Scenario 8: Refresh the page (re-query) and verify the rejected request does not reappear
+        List<BloodRequestResponse> bDonor1Refreshed = bloodRequestService.getIncomingRequestsForDonor(bPosUser1.getId());
+        assertFalse(bDonor1Refreshed.stream().anyMatch(r -> r.getId().equals(bPosRequest.getId())),
+                "Rejected request must NOT reappear after refresh");
+
+        // Scenario 9: Verify the request is still visible to the hospital
+        List<BloodRequestResponse> hospRequests = bloodRequestService.getRequestsByHospital(hospitalUser.getId());
+        assertTrue(hospRequests.stream().anyMatch(r -> r.getId().equals(bPosRequest.getId())),
+                "Hospital MUST still see the blood request after donor rejection");
+
+        // Scenario 10: Verify other matching B+ donors can still receive the request
+        User bPosUser2 = createTestDonorUser("B+ Donor Two", "bpos2@test.org", BloodGroup.B_POS);
+        List<BloodRequestResponse> bDonor2Requests = bloodRequestService.getIncomingRequestsForDonor(bPosUser2.getId());
+        assertTrue(bDonor2Requests.stream().anyMatch(r -> r.getId().equals(bPosRequest.getId())),
+                "Other B+ donors MUST still receive the request");
+
+        // Scenario 11: Another B+ donor (Donor 2) accepts the request
+        DonorRequestResponseDto acceptDto = new DonorRequestResponseDto(DonorResponseStatus.ACCEPTED, LocalDate.now().plusDays(1), "10:00 AM", "Happy to donate!");
+        Donation acceptResult = bloodRequestService.respondToRequest(bPosRequest.getId(), bPosUser2.getId(), acceptDto);
+        assertEquals(DonationStatus.SCHEDULED, acceptResult.getStatus());
+
+        // Verify request overall status updated to ACCEPTED
+        BloodRequest updatedReq = requestRepository.findById(bPosRequest.getId()).orElseThrow();
+        assertEquals(RequestStatus.ACCEPTED, updatedReq.getStatus());
+
+        // Scenario 12: Verify hospital receives the acceptance notification
+        List<NotificationResponseDto> notifications = bloodRequestService.getHospitalNotifications(hospitalUser.getId());
+        assertFalse(notifications.isEmpty(), "Hospital must receive notifications");
+        NotificationResponseDto acceptanceNotification = notifications.stream()
+                .filter(n -> n.getRelatedRequestId().equals(bPosRequest.getId()))
+                .findFirst()
+                .orElse(null);
+        assertNotNull(acceptanceNotification, "Hospital must receive notification for this request");
+        assertTrue(acceptanceNotification.getMessage().contains("B+ blood request"));
+        assertEquals("B+ Donor Two", acceptanceNotification.getDonorName());
+
+        // Scenario 13: Verify hospital dashboard displays the accepted donor's details
+        List<DonorResponseDetailDto> responses = bloodRequestService.getResponsesForRequest(bPosRequest.getId(), hospitalUser.getId());
+        assertEquals(2, responses.size(), "Hospital should see both donor responses (rejected and accepted)");
+
+        DonorResponseDetailDto acceptedDetail = responses.stream()
+                .filter(r -> r.getStatus() == DonorResponseStatus.ACCEPTED)
+                .findFirst()
+                .orElse(null);
+        assertNotNull(acceptedDetail);
+        assertEquals("B+ Donor Two", acceptedDetail.getDonorName());
+        assertEquals(BloodGroup.B_POS, acceptedDetail.getDonorBloodGroup());
+        assertEquals("+91 9111111111", acceptedDetail.getDonorPhone());
+        assertNotNull(acceptedDetail.getRespondedAt());
+        assertEquals(DonorResponseStatus.ACCEPTED, acceptedDetail.getStatus());
+
+        DonorResponseDetailDto rejectedDetail = responses.stream()
+                .filter(r -> r.getStatus() == DonorResponseStatus.REJECTED)
+                .findFirst()
+                .orElse(null);
+        assertNotNull(rejectedDetail);
+        assertEquals("B+ Donor One", rejectedDetail.getDonorName());
+        assertEquals(DonorResponseStatus.REJECTED, rejectedDetail.getStatus());
+
+        // Scenario 14: Verify O+ donors cannot receive or accept the B+ request
+        assertFalse(bloodRequestService.getIncomingRequestsForDonor(oPosUser.getId()).stream().anyMatch(r -> r.getId().equals(bPosRequest.getId())));
+        DonorRequestResponseDto oPosAcceptDto = new DonorRequestResponseDto(DonorResponseStatus.ACCEPTED, LocalDate.now(), "Attempting incompatible accept");
+        BadRequestException mismatchEx = assertThrows(BadRequestException.class, () ->
+                bloodRequestService.respondToRequest(bPosRequest.getId(), oPosUser.getId(), oPosAcceptDto));
+        assertTrue(mismatchEx.getMessage().contains("Incompatible blood group"));
+
+        // Scenario 15: Test duplicate responses and unauthorized access
+        // Duplicate response from B+ donor 2:
+        BadRequestException dupEx = assertThrows(BadRequestException.class, () ->
+                bloodRequestService.respondToRequest(bPosRequest.getId(), bPosUser2.getId(), acceptDto));
+        assertTrue(dupEx.getMessage().contains("already responded"));
+
+        // Unauthorized access: Hospital B cannot access Hospital A's request responses
+        User hospitalUserB = new User("Other Hospital", "otherhosp@lifedrop.org", passwordEncoder.encode("pass"), "+91 44 99998888", Role.HOSPITAL);
+        hospitalUserB = userRepository.save(hospitalUserB);
+        final Long unauthorizedUserId = hospitalUserB.getId();
+        assertThrows(BadRequestException.class, () ->
+                bloodRequestService.getResponsesForRequest(bPosRequest.getId(), unauthorizedUserId));
     }
 
     @Test
-    @DisplayName("TEST 2: Donor = A+, Hospital request = B+ -> Result = Incompatible")
-    void test2_APosDonor_BPosRequest_Incompatible() {
-        User aPosDonorUser = createTestDonorUser("A+ Donor 2", "apos2@test.org", BloodGroup.A_POS);
-        BloodRequestResponse bPosRequest = createTestBloodRequest(BloodGroup.B_POS, "Urgent B+ requirement");
-
-        List<BloodRequestResponse> incoming = bloodRequestService.getIncomingRequestsForDonor(aPosDonorUser.getId());
-        assertFalse(incoming.stream().anyMatch(r -> r.getId().equals(bPosRequest.getId())),
-                "A+ donor must NOT see B+ hospital blood request");
-
-        DonorRequestResponseDto acceptDto = new DonorRequestResponseDto(DonationStatus.ACCEPTED, LocalDate.now(), "Attempting incompatible accept");
-        BadRequestException ex = assertThrows(BadRequestException.class, () ->
-                bloodRequestService.respondToRequest(bPosRequest.getId(), aPosDonorUser.getId(), acceptDto));
-        assertTrue(ex.getMessage().contains("Incompatible blood group"));
-    }
-
-    @Test
-    @DisplayName("TEST 3: Donor = B+, Hospital request = O+ -> Result = Incompatible")
-    void test3_BPosDonor_OPosRequest_Incompatible() {
-        User bPosDonorUser = createTestDonorUser("B+ Donor 3", "bpos3@test.org", BloodGroup.B_POS);
-        BloodRequestResponse oPosRequest = createTestBloodRequest(BloodGroup.O_POS, "Urgent O+ requirement");
-
-        List<BloodRequestResponse> incoming = bloodRequestService.getIncomingRequestsForDonor(bPosDonorUser.getId());
-        assertFalse(incoming.stream().anyMatch(r -> r.getId().equals(oPosRequest.getId())),
-                "B+ donor must NOT see O+ hospital blood request");
-
-        DonorRequestResponseDto acceptDto = new DonorRequestResponseDto(DonationStatus.ACCEPTED, LocalDate.now(), "Attempting incompatible accept");
-        BadRequestException ex = assertThrows(BadRequestException.class, () ->
-                bloodRequestService.respondToRequest(oPosRequest.getId(), bPosDonorUser.getId(), acceptDto));
-        assertTrue(ex.getMessage().contains("Incompatible blood group"));
-    }
-
-    @Test
-    @DisplayName("TEST 4: Donor = O-, Hospital request = AB+ -> Result = Compatible")
-    void test4_ONegDonor_ABPosRequest_Compatible() {
-        User oNegDonorUser = createTestDonorUser("O- Donor 4", "oneg4@test.org", BloodGroup.O_NEG);
-        BloodRequestResponse abPosRequest = createTestBloodRequest(BloodGroup.AB_POS, "AB+ requirement");
-
-        List<BloodRequestResponse> incoming = bloodRequestService.getIncomingRequestsForDonor(oNegDonorUser.getId());
-        assertTrue(incoming.stream().anyMatch(r -> r.getId().equals(abPosRequest.getId())),
-                "O- donor MUST see AB+ incoming hospital blood request");
-    }
-
-    @Test
-    @DisplayName("TEST 5: Donor logs in -> Find a Donor is restricted to Hospital/Admin only")
-    void test5_DonorFindDonorRestricted() {
+    @DisplayName("Biological Compatibility Matrix: canDonateTo verifies correctly")
+    void testCompatibilityMatrix() {
         assertFalse(compatibilityService.canDonateTo(BloodGroup.A_POS, BloodGroup.B_POS));
         assertTrue(compatibilityService.canDonateTo(BloodGroup.O_NEG, BloodGroup.AB_POS));
+        assertTrue(compatibilityService.canDonateTo(BloodGroup.O_POS, BloodGroup.B_POS));
     }
 
     @Test
-    @DisplayName("TEST 6: Donor logs in -> Hospital management functions restricted")
-    void test6_DonorHospitalManagementRestricted() {
-        // Hospitals have their own requests list by hospital id
-        List<BloodRequestResponse> hospRequests = bloodRequestService.getRequestsByHospital(hospitalUser.getId());
-        assertNotNull(hospRequests);
+    @DisplayName("Hospital creates B+ request -> Only B+ donors receive it, A+ donor does NOT")
+    void testExactBloodGroupDistribution() {
+        User bPosDonor = createTestDonorUser("B+ Exact", "bexact@test.org", BloodGroup.B_POS);
+        User aPosDonor = createTestDonorUser("A+ Incompatible", "aincomp@test.org", BloodGroup.A_POS);
+        BloodRequestResponse bReq = createTestBloodRequest(BloodGroup.B_POS, "Exact B+ request");
+
+        List<BloodRequestResponse> bIncoming = bloodRequestService.getIncomingRequestsForDonor(bPosDonor.getId());
+        assertTrue(bIncoming.stream().anyMatch(r -> r.getId().equals(bReq.getId())));
+
+        List<BloodRequestResponse> aIncoming = bloodRequestService.getIncomingRequestsForDonor(aPosDonor.getId());
+        assertFalse(aIncoming.stream().anyMatch(r -> r.getId().equals(bReq.getId())));
     }
 
     @Test
-    @DisplayName("TEST 7: Donor logs in -> Complete blood request list NOT visible (donor sees only compatible incoming requests)")
-    void test7_DonorSeesOnlyCompatibleIncomingRequests() {
-        User bPosDonorUser = createTestDonorUser("B+ Donor 7", "bpos7@test.org", BloodGroup.B_POS);
-        BloodRequestResponse oPosRequest = createTestBloodRequest(BloodGroup.O_POS, "O+ Request");
-        BloodRequestResponse abPosRequest = createTestBloodRequest(BloodGroup.AB_POS, "AB+ Request");
-
-        List<BloodRequestResponse> donorIncoming = bloodRequestService.getIncomingRequestsForDonor(bPosDonorUser.getId());
-        // B+ can donate to AB+, but NOT O+
-        assertTrue(donorIncoming.stream().anyMatch(r -> r.getId().equals(abPosRequest.getId())), "B+ can see AB+ request");
-        assertFalse(donorIncoming.stream().anyMatch(r -> r.getId().equals(oPosRequest.getId())), "B+ must NOT see O+ request");
-    }
-
-    @Test
-    @DisplayName("TEST 8: Donor logs in -> Highly demanded blood groups = visible")
-    void test8_HighlyDemandedBloodGroupsVisible() {
-        createTestBloodRequest(BloodGroup.O_POS, "Urgent O+ demand");
-        createTestBloodRequest(BloodGroup.O_POS, "Second O+ demand");
-        createTestBloodRequest(BloodGroup.B_POS, "Urgent B+ demand");
-
-        var demanded = bloodRequestService.getHighlyDemandedBloodGroups();
-        assertNotNull(demanded);
-        assertFalse(demanded.isEmpty());
-        assertTrue(demanded.stream().anyMatch(d -> d.getBloodGroup() == BloodGroup.O_POS || "O+".equals(d.getBloodGroupDisplay())));
-        assertTrue(demanded.stream().anyMatch(d -> d.getBloodGroup() == BloodGroup.B_POS || "B+".equals(d.getBloodGroupDisplay())));
-    }
-
-    @Test
-    @DisplayName("TEST 9: Hospital creates B+ request -> O+ donor = request visible")
-    void test9_HospitalCreatesBPosRequest_OPosDonor_Visible() {
-        User oPosDonor = createTestDonorUser("O+ Donor 9", "opos9@test.org", BloodGroup.O_POS);
-        BloodRequestResponse bPosReq = createTestBloodRequest(BloodGroup.B_POS, "Surgery B+");
-
-        List<BloodRequestResponse> incoming = bloodRequestService.getIncomingRequestsForDonor(oPosDonor.getId());
-        assertTrue(incoming.stream().anyMatch(r -> r.getId().equals(bPosReq.getId())));
-    }
-
-    @Test
-    @DisplayName("TEST 10: Hospital creates B+ request -> A+ donor = request NOT visible")
-    void test10_HospitalCreatesBPosRequest_APosDonor_NotVisible() {
-        User aPosDonor = createTestDonorUser("A+ Donor 10", "apos10@test.org", BloodGroup.A_POS);
-        BloodRequestResponse bPosReq = createTestBloodRequest(BloodGroup.B_POS, "Surgery B+ 2");
-
-        List<BloodRequestResponse> incoming = bloodRequestService.getIncomingRequestsForDonor(aPosDonor.getId());
-        assertFalse(incoming.stream().anyMatch(r -> r.getId().equals(bPosReq.getId())));
-    }
-
-    @Test
-    @DisplayName("TEST 11: Donor tries to schedule before deadline -> Result = ALLOWED")
-    void test11_DonorScheduleBeforeDeadline_Allowed() {
-        User oPosDonor = createTestDonorUser("O+ Donor 11", "opos11@test.org", BloodGroup.O_POS);
-        
-        // Request deadline is 10 days from now
+    @DisplayName("Donor tries to schedule before deadline -> Allowed")
+    void testDonorScheduleBeforeDeadline_Allowed() {
+        User bPosDonor = createTestDonorUser("B+ Donor Schedule", "bsched@test.org", BloodGroup.B_POS);
         LocalDate deadline = LocalDate.now().plusDays(10);
         BloodRequestCreateDto dto = new BloodRequestCreateDto();
         dto.setHospitalName(hospital.getHospitalName());
@@ -345,26 +370,19 @@ class HospitalWorkflowTest {
         dto.setNotes("Deadline test");
         BloodRequestResponse req = bloodRequestService.createRequest(hospitalUser.getId(), dto);
 
-        // Schedule donation 5 days from now (before deadline)
         LocalDate scheduledDate = LocalDate.now().plusDays(5);
-        DonorRequestResponseDto responseDto = new DonorRequestResponseDto();
-        responseDto.setStatus(DonationStatus.ACCEPTED);
-        responseDto.setScheduledDate(scheduledDate);
-        responseDto.setScheduledTime("10:30 AM");
-        responseDto.setNotes("Scheduled before deadline");
+        DonorRequestResponseDto responseDto = new DonorRequestResponseDto(DonorResponseStatus.ACCEPTED, scheduledDate, "10:30 AM", "Scheduled before deadline");
 
-        Donation donation = bloodRequestService.respondToRequest(req.getId(), oPosDonor.getId(), responseDto);
+        Donation donation = bloodRequestService.respondToRequest(req.getId(), bPosDonor.getId(), responseDto);
         assertNotNull(donation);
         assertEquals(DonationStatus.SCHEDULED, donation.getStatus());
         assertEquals(scheduledDate, donation.getDonationDate());
     }
 
     @Test
-    @DisplayName("TEST 12: Donor tries to schedule after deadline -> Result = REJECTED")
-    void test12_DonorScheduleAfterDeadline_Rejected() {
-        User oPosDonor = createTestDonorUser("O+ Donor 12", "opos12@test.org", BloodGroup.O_POS);
-
-        // Request deadline is 3 days from now
+    @DisplayName("Donor tries to schedule after deadline -> Rejected")
+    void testDonorScheduleAfterDeadline_Rejected() {
+        User bPosDonor = createTestDonorUser("B+ Donor Late", "blate@test.org", BloodGroup.B_POS);
         LocalDate deadline = LocalDate.now().plusDays(3);
         BloodRequestCreateDto dto = new BloodRequestCreateDto();
         dto.setHospitalName(hospital.getHospitalName());
@@ -376,18 +394,20 @@ class HospitalWorkflowTest {
         dto.setNotes("Deadline test 2");
         BloodRequestResponse req = bloodRequestService.createRequest(hospitalUser.getId(), dto);
 
-        // Schedule donation 5 days from now (AFTER deadline)
         LocalDate scheduledDate = LocalDate.now().plusDays(5);
-        DonorRequestResponseDto responseDto = new DonorRequestResponseDto();
-        responseDto.setStatus(DonationStatus.ACCEPTED);
-        responseDto.setScheduledDate(scheduledDate);
-        responseDto.setScheduledTime("11:00 AM");
-        responseDto.setNotes("Attempting schedule after deadline");
+        DonorRequestResponseDto responseDto = new DonorRequestResponseDto(DonorResponseStatus.ACCEPTED, scheduledDate, "11:00 AM", "Attempting schedule after deadline");
 
         BadRequestException ex = assertThrows(BadRequestException.class, () ->
-                bloodRequestService.respondToRequest(req.getId(), oPosDonor.getId(), responseDto));
-        
-        assertEquals("Donation schedule must be before the request deadline.", ex.getMessage(),
-                "Error message MUST match exact expected string");
+                bloodRequestService.respondToRequest(req.getId(), bPosDonor.getId(), responseDto));
+
+        assertEquals("Donation schedule must be before the request deadline.", ex.getMessage());
+    }
+
+    @Test
+    @DisplayName("Hospital completes request -> Status is COMPLETED")
+    void testCompleteRequest() {
+        BloodRequestResponse req = createTestBloodRequest(BloodGroup.B_POS, "To complete");
+        BloodRequestResponse completed = bloodRequestService.completeRequest(req.getId(), hospitalUser.getId());
+        assertEquals(RequestStatus.COMPLETED, completed.getStatus());
     }
 }

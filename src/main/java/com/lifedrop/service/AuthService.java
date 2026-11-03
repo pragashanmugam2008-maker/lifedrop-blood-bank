@@ -18,15 +18,22 @@ import com.lifedrop.repository.ReferralRepository;
 import com.lifedrop.repository.UserRepository;
 import com.lifedrop.security.JwtTokenProvider;
 import com.lifedrop.security.UserPrincipal;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.UUID;
+
 @Service
 public class AuthService {
+
+    private static final Logger logger = LoggerFactory.getLogger(AuthService.class);
 
     private final UserRepository userRepository;
     private final DonorRepository donorRepository;
@@ -57,27 +64,49 @@ public class AuthService {
 
     @Transactional
     public AuthResponse register(RegisterRequest request) {
-        if (userRepository.existsByEmail(request.getEmail())) {
-            throw new DuplicateResourceException("An account with email " + request.getEmail() + " already exists");
+        return register(request, UUID.randomUUID().toString());
+    }
+
+    @Transactional
+    public AuthResponse register(RegisterRequest request, String correlationId) {
+        long totalStartTime = System.currentTimeMillis();
+        String safeEmail = request.getEmail() != null ? request.getEmail().trim().toLowerCase() : "";
+        logger.info("[LifeDrop Auth][CorrelationID: {}] Stage 0 - Incoming registration request for email: [{}], role: [{}]",
+                correlationId, safeEmail, request.getRole());
+
+        // Stage 1: Email uniqueness check
+        long tCheckStart = System.currentTimeMillis();
+        if (userRepository.existsByEmail(safeEmail)) {
+            long checkDuration = System.currentTimeMillis() - tCheckStart;
+            logger.warn("[LifeDrop Auth][CorrelationID: {}] Stage 1 - Duplicate email check FAILED in {} ms: [{}]",
+                    correlationId, checkDuration, safeEmail);
+            throw new DuplicateResourceException("An account with email " + safeEmail + " already exists");
         }
+        long checkDuration = System.currentTimeMillis() - tCheckStart;
+        logger.info("[LifeDrop Auth][CorrelationID: {}] Stage 1 - Email uniqueness confirmed in {} ms", correlationId, checkDuration);
 
+        // Stage 2: Password hashing & user creation
+        long tHashStart = System.currentTimeMillis();
         Role role = request.getRole() != null ? request.getRole() : Role.DONOR;
-
         User user = new User(
                 request.getName(),
-                request.getEmail(),
+                safeEmail,
                 passwordEncoder.encode(request.getPassword()),
                 request.getPhone(),
                 role
         );
-
         User savedUser = userRepository.save(user);
+        long hashDuration = System.currentTimeMillis() - tHashStart;
+        logger.info("[LifeDrop Auth][CorrelationID: {}] Stage 2 - Password hashed and user saved in {} ms (User ID: {})",
+                correlationId, hashDuration, savedUser.getId());
 
-        // Process referral code if provided for donor
+        // Stage 3: Process referral if applicable
+        long tRefStart = System.currentTimeMillis();
         if (request.getReferralCode() != null && !request.getReferralCode().trim().isEmpty()) {
             referralService.processReferralRegistration(request.getReferralCode().trim(), savedUser);
         }
 
+        // Stage 4: Create role-specific entity
         Long donorId = null;
         Long hospitalId = null;
         String hospitalName = null;
@@ -126,8 +155,19 @@ public class AuthService {
             } catch (Exception ignored) {
             }
         }
+        long roleDuration = System.currentTimeMillis() - tRefStart;
+        logger.info("[LifeDrop Auth][CorrelationID: {}] Stage 4 - Role entity profile created in {} ms",
+                correlationId, roleDuration);
 
+        // Stage 5: JWT generation
+        long tJwtStart = System.currentTimeMillis();
         String token = jwtTokenProvider.generateTokenFromUserId(savedUser.getId(), savedUser.getEmail(), savedUser.getRole().name());
+        long jwtDuration = System.currentTimeMillis() - tJwtStart;
+        logger.info("[LifeDrop Auth][CorrelationID: {}] Stage 5 - JWT generation in {} ms", correlationId, jwtDuration);
+
+        long totalDuration = System.currentTimeMillis() - totalStartTime;
+        logger.info("[LifeDrop Auth][CorrelationID: {}] Stage 6 - Registration completed successfully in {} ms for User ID: {}",
+                correlationId, totalDuration, savedUser.getId());
 
         return new AuthResponse(token, savedUser.getId(), savedUser.getName(), savedUser.getEmail(),
                 savedUser.getPhone(), savedUser.getRole(), donorId, hospitalId, hospitalName, referralCode);
@@ -135,16 +175,51 @@ public class AuthService {
 
     @Transactional(readOnly = true)
     public AuthResponse login(LoginRequest request) {
-        Authentication authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
-        );
+        return login(request, UUID.randomUUID().toString());
+    }
 
-        UserPrincipal userPrincipal = (UserPrincipal) authentication.getPrincipal();
-        String token = jwtTokenProvider.generateToken(authentication);
+    @Transactional(readOnly = true)
+    public AuthResponse login(LoginRequest request, String correlationId) {
+        long totalStartTime = System.currentTimeMillis();
+        String safeEmail = request.getEmail() != null ? request.getEmail().trim().toLowerCase() : "";
+        logger.info("[LifeDrop Auth][CorrelationID: {}] Stage 0 - Incoming login request for user: [{}]", correlationId, safeEmail);
 
-        Long userId = userPrincipal.getId();
-        Role role = userPrincipal.getRole();
+        // Stage 1: User lookup
+        long tLookupStart = System.currentTimeMillis();
+        User user = userRepository.findByEmail(safeEmail)
+                .orElseThrow(() -> {
+                    long elapsed = System.currentTimeMillis() - tLookupStart;
+                    logger.warn("[LifeDrop Auth][CorrelationID: {}] Stage 1 - User lookup FAILED (email not found) in {} ms for [{}]",
+                            correlationId, elapsed, safeEmail);
+                    return new BadCredentialsException("Bad credentials");
+                });
+        long lookupDuration = System.currentTimeMillis() - tLookupStart;
+        logger.info("[LifeDrop Auth][CorrelationID: {}] Stage 1 - User lookup SUCCEEDED in {} ms (User ID: {})",
+                correlationId, lookupDuration, user.getId());
 
+        // Stage 2: Password verification
+        long tPassStart = System.currentTimeMillis();
+        boolean passwordMatches = passwordEncoder.matches(request.getPassword(), user.getPassword());
+        long passDuration = System.currentTimeMillis() - tPassStart;
+        if (!passwordMatches) {
+            logger.warn("[LifeDrop Auth][CorrelationID: {}] Stage 2 - Password verification FAILED (mismatch) in {} ms for User ID: {}",
+                    correlationId, passDuration, user.getId());
+            throw new BadCredentialsException("Bad credentials");
+        }
+        logger.info("[LifeDrop Auth][CorrelationID: {}] Stage 2 - Password verification SUCCEEDED in {} ms for User ID: {}",
+                correlationId, passDuration, user.getId());
+
+        // Stage 3: JWT token generation
+        long tJwtStart = System.currentTimeMillis();
+        String token = jwtTokenProvider.generateTokenFromUserId(user.getId(), user.getEmail(), user.getRole().name());
+        long jwtDuration = System.currentTimeMillis() - tJwtStart;
+        logger.info("[LifeDrop Auth][CorrelationID: {}] Stage 3 - JWT generation SUCCEEDED in {} ms (Role: {})",
+                correlationId, jwtDuration, user.getRole());
+
+        // Stage 4: Profile & role metadata retrieval
+        long tMetaStart = System.currentTimeMillis();
+        Long userId = user.getId();
+        Role role = user.getRole();
         Long donorId = null;
         Long hospitalId = null;
         String hospitalName = null;
@@ -161,9 +236,17 @@ public class AuthService {
                 hospitalName = hospital.getHospitalName();
             }
         }
+        long metaDuration = System.currentTimeMillis() - tMetaStart;
+        logger.info("[LifeDrop Auth][CorrelationID: {}] Stage 4 - Profile metadata retrieval SUCCEEDED in {} ms (DonorId: {}, HospitalId: {})",
+                correlationId, metaDuration, donorId, hospitalId);
 
-        return new AuthResponse(token, userId, userPrincipal.getName(), userPrincipal.getEmail(),
-                userPrincipal.getPhone(), role, donorId, hospitalId, hospitalName, referralCode);
+        // Stage 5: Response completion
+        long totalDuration = System.currentTimeMillis() - totalStartTime;
+        logger.info("[LifeDrop Auth][CorrelationID: {}] Stage 5 - Login workflow COMPLETED successfully in {} ms for User ID: {}",
+                correlationId, totalDuration, userId);
+
+        return new AuthResponse(token, userId, user.getName(), user.getEmail(),
+                user.getPhone(), role, donorId, hospitalId, hospitalName, referralCode);
     }
 
     @Transactional(readOnly = true)

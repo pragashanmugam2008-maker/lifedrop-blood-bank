@@ -89,7 +89,7 @@ public class SecurityConfig {
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .authorizeHttpRequests(auth -> auth
                         // Static frontend & documentation
-                        .requestMatchers("/", "/index.html", "/css/**", "/js/**", "/images/**", "/assets/**", "/favicon.ico", "/h2-console/**").permitAll()
+                        .requestMatchers("/", "/index.html", "/admin.html", "/admin", "/css/**", "/js/**", "/images/**", "/assets/**", "/favicon.ico", "/h2-console/**").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
 
                         // Public API endpoints

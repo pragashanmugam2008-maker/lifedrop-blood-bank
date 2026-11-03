@@ -1,8 +1,17 @@
 {
   "cleanUrls": true,
-  "routes": [
-    { "src": "/api/(.*)", "dest": "https://lifedrop-blood-bank-3ypa.onrender.com/api/$1" },
-    { "handle": "filesystem" },
-    { "src": "/(.*)", "dest": "/index.html" }
+  "rewrites": [
+    {
+      "source": "/api/:match*",
+      "destination": "https://lifedrop-blood-bank-3ypa.onrender.com/api/:match*"
+    },
+    {
+      "source": "/admin",
+      "destination": "/admin.html"
+    },
+    {
+      "source": "/((?!api|admin\\.html|css|js|images|assets|favicon\\.ico).*)",
+      "destination": "/index.html"
+    }
   ]
 }

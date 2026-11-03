@@ -101,7 +101,7 @@ public class DonationService {
         inventoryService.addStock(donor.getBloodGroup(), units);
 
         // 3. If linked to blood request, update status to FULFILLED
-        if (request != null && request.getStatus() == RequestStatus.ACTIVE) {
+        if (request != null && (request.getStatus() == RequestStatus.ACTIVE || request.getStatus() == RequestStatus.ACCEPTED || request.getStatus() == RequestStatus.PENDING)) {
             request.setStatus(RequestStatus.FULFILLED);
             bloodRequestRepository.save(request);
         }

@@ -3,12 +3,10 @@ package com.lifedrop.controller;
 import com.lifedrop.dto.request.BloodRequestCreateDto;
 import com.lifedrop.dto.request.BloodRequestStatusDto;
 import com.lifedrop.dto.request.DonorRequestResponseDto;
-import com.lifedrop.dto.response.ApiResponse;
-import com.lifedrop.dto.response.BloodGroupDemandResponse;
-import com.lifedrop.dto.response.BloodRequestResponse;
-import com.lifedrop.dto.response.DonationResponse;
+import com.lifedrop.dto.response.*;
 import com.lifedrop.entity.Donation;
 import com.lifedrop.enums.BloodGroup;
+import com.lifedrop.enums.DonorResponseStatus;
 import com.lifedrop.enums.RequestStatus;
 import com.lifedrop.enums.RequestUrgency;
 import com.lifedrop.security.UserPrincipal;
@@ -148,9 +146,97 @@ public class BloodRequestController {
         return ResponseEntity.ok(ApiResponse.success("Response recorded: " + dto.getStatus(), donationService.mapToResponse(donation)));
     }
 
+    @GetMapping("/responses")
+    @PreAuthorize("hasAnyRole('HOSPITAL', 'ADMIN')")
+    @Operation(summary = "Hospital gets all donor responses for their blood requests")
+    @SecurityRequirement(name = "bearerAuth")
+    public ResponseEntity<ApiResponse<List<DonorResponseDetailDto>>> getHospitalResponses(
+            @AuthenticationPrincipal UserPrincipal userPrincipal,
+            @RequestParam(required = false) DonorResponseStatus status) {
+
+        if (userPrincipal == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(ApiResponse.error("Not authenticated"));
+        }
+        List<DonorResponseDetailDto> responses = requestService.getAllResponsesForHospital(userPrincipal.getId(), status);
+        return ResponseEntity.ok(ApiResponse.success(responses));
+    }
+
+    @GetMapping("/{id}/responses")
+    @PreAuthorize("hasAnyRole('HOSPITAL', 'ADMIN')")
+    @Operation(summary = "Hospital gets donor responses for a specific blood request")
+    @SecurityRequirement(name = "bearerAuth")
+    public ResponseEntity<ApiResponse<List<DonorResponseDetailDto>>> getResponsesForRequest(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserPrincipal userPrincipal) {
+
+        if (userPrincipal == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(ApiResponse.error("Not authenticated"));
+        }
+        List<DonorResponseDetailDto> responses = requestService.getResponsesForRequest(id, userPrincipal.getId());
+        return ResponseEntity.ok(ApiResponse.success(responses));
+    }
+
+    @GetMapping("/notifications")
+    @PreAuthorize("hasAnyRole('HOSPITAL', 'ADMIN')")
+    @Operation(summary = "Hospital views blood request notifications")
+    @SecurityRequirement(name = "bearerAuth")
+    public ResponseEntity<ApiResponse<List<NotificationResponseDto>>> getNotifications(
+            @AuthenticationPrincipal UserPrincipal userPrincipal) {
+
+        if (userPrincipal == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(ApiResponse.error("Not authenticated"));
+        }
+        List<NotificationResponseDto> notifications = requestService.getHospitalNotifications(userPrincipal.getId());
+        return ResponseEntity.ok(ApiResponse.success(notifications));
+    }
+
+    @PutMapping("/notifications/{notificationId}/read")
+    @PreAuthorize("hasAnyRole('HOSPITAL', 'ADMIN')")
+    @Operation(summary = "Mark a notification as read")
+    @SecurityRequirement(name = "bearerAuth")
+    public ResponseEntity<ApiResponse<Void>> markNotificationRead(
+            @PathVariable Long notificationId,
+            @AuthenticationPrincipal UserPrincipal userPrincipal) {
+
+        if (userPrincipal == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(ApiResponse.error("Not authenticated"));
+        }
+        requestService.markNotificationAsRead(notificationId, userPrincipal.getId());
+        return ResponseEntity.ok(ApiResponse.success("Notification marked as read", null));
+    }
+
+    @PutMapping("/notifications/read-all")
+    @PreAuthorize("hasAnyRole('HOSPITAL', 'ADMIN')")
+    @Operation(summary = "Mark all notifications as read")
+    @SecurityRequirement(name = "bearerAuth")
+    public ResponseEntity<ApiResponse<Void>> markAllNotificationsRead(
+            @AuthenticationPrincipal UserPrincipal userPrincipal) {
+
+        if (userPrincipal == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(ApiResponse.error("Not authenticated"));
+        }
+        requestService.markAllNotificationsAsRead(userPrincipal.getId());
+        return ResponseEntity.ok(ApiResponse.success("All notifications marked as read", null));
+    }
+
+    @PutMapping("/{id}/complete")
+    @PreAuthorize("hasAnyRole('HOSPITAL', 'ADMIN')")
+    @Operation(summary = "Hospital marks a blood request as COMPLETED")
+    @SecurityRequirement(name = "bearerAuth")
+    public ResponseEntity<ApiResponse<BloodRequestResponse>> completeRequest(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserPrincipal userPrincipal) {
+
+        if (userPrincipal == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(ApiResponse.error("Not authenticated"));
+        }
+        BloodRequestResponse updated = requestService.completeRequest(id, userPrincipal.getId());
+        return ResponseEntity.ok(ApiResponse.success("Blood request completed successfully", updated));
+    }
+
     @PutMapping("/{id}/status")
     @PreAuthorize("hasAnyRole('HOSPITAL', 'ADMIN')")
-    @Operation(summary = "Update blood request status (ACTIVE, FULFILLED, CANCELLED)")
+    @Operation(summary = "Update blood request status (PENDING, ACCEPTED, COMPLETED, CANCELLED)")
     @SecurityRequirement(name = "bearerAuth")
     public ResponseEntity<ApiResponse<BloodRequestResponse>> updateStatus(
             @PathVariable Long id,

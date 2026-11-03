@@ -29,17 +29,30 @@ public class AuthController {
 
     @PostMapping("/register")
     @Operation(summary = "Register a new user (Donor or Patient)")
-    public ResponseEntity<ApiResponse<AuthResponse>> register(@Valid @RequestBody RegisterRequest request) {
-        AuthResponse response = authService.register(request);
+    public ResponseEntity<ApiResponse<AuthResponse>> register(
+            @RequestHeader(value = "X-Correlation-ID", required = false) String correlationId,
+            @Valid @RequestBody RegisterRequest request) {
+        String corrId = (correlationId != null && !correlationId.trim().isEmpty())
+                ? correlationId.trim()
+                : "corr-" + java.util.UUID.randomUUID().toString().substring(0, 8);
+        AuthResponse response = authService.register(request, corrId);
         return ResponseEntity.status(HttpStatus.CREATED)
+                .header("X-Correlation-ID", corrId)
                 .body(ApiResponse.success("Registration successful", response));
     }
 
     @PostMapping("/login")
     @Operation(summary = "Authenticate user and receive JWT token")
-    public ResponseEntity<ApiResponse<AuthResponse>> login(@Valid @RequestBody LoginRequest request) {
-        AuthResponse response = authService.login(request);
-        return ResponseEntity.ok(ApiResponse.success("Login successful", response));
+    public ResponseEntity<ApiResponse<AuthResponse>> login(
+            @RequestHeader(value = "X-Correlation-ID", required = false) String correlationId,
+            @Valid @RequestBody LoginRequest request) {
+        String corrId = (correlationId != null && !correlationId.trim().isEmpty())
+                ? correlationId.trim()
+                : "corr-" + java.util.UUID.randomUUID().toString().substring(0, 8);
+        AuthResponse response = authService.login(request, corrId);
+        return ResponseEntity.ok()
+                .header("X-Correlation-ID", corrId)
+                .body(ApiResponse.success("Login successful", response));
     }
 
     @GetMapping("/me")

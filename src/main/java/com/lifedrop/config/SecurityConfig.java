@@ -34,7 +34,7 @@ public class SecurityConfig {
     private final CustomUserDetailsService customUserDetailsService;
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
-    @Value("${lifedrop.cors.allowed-origins:http://localhost:5500,http://127.0.0.1:5500,http://localhost:3000,http://localhost:8080,http://127.0.0.1:8080}")
+    @Value("${lifedrop.cors.allowed-origins:http://localhost:5500,http://127.0.0.1:5500,http://localhost:3000,http://localhost:8080,http://127.0.0.1:8080,https://*.vercel.app,https://*.onrender.com,https://lifedrop-blood-bank-pragashanmugam2008-maker.vercel.app}")
     private String allowedOrigins;
 
     public SecurityConfig(CustomUserDetailsService customUserDetailsService,
@@ -68,8 +68,13 @@ public class SecurityConfig {
         List<String> origins = Arrays.asList(allowedOrigins.split(","));
         configuration.setAllowedOriginPatterns(origins);
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
-        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With", "Accept", "Origin", "Access-Control-Request-Method", "Access-Control-Request-Headers"));
-        configuration.setExposedHeaders(Arrays.asList("Authorization", "Link", "X-Total-Count"));
+        configuration.setAllowedHeaders(Arrays.asList(
+                "Authorization", "Content-Type", "X-Requested-With", "Accept", "Origin",
+                "Access-Control-Request-Method", "Access-Control-Request-Headers",
+                "X-Correlation-ID", "x-correlation-id", "X-Correlation-Id"
+        ));
+        configuration.addAllowedHeader("*");
+        configuration.setExposedHeaders(Arrays.asList("Authorization", "Link", "X-Total-Count", "X-Correlation-ID", "x-correlation-id"));
         configuration.setAllowCredentials(true);
         configuration.setMaxAge(3600L);
 
@@ -88,6 +93,9 @@ public class SecurityConfig {
                 .authenticationProvider(authenticationProvider())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .authorizeHttpRequests(auth -> auth
+                        // Unconditional preflight CORS handling
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+
                         // Static frontend & documentation
                         .requestMatchers("/", "/index.html", "/admin.html", "/admin", "/css/**", "/js/**", "/images/**", "/assets/**", "/favicon.ico", "/h2-console/**").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()

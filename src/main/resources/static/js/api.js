@@ -9,19 +9,16 @@ const API_BASE_URL = (() => {
     if (window.LIFEDROP_API_URL) return window.LIFEDROP_API_URL.replace(/\/+$/, '');
     if (window.location.protocol === 'file:') return 'https://lifedrop-blood-bank-3ypa.onrender.com';
     
-    // Local development
+    // Local development outside 8080 port (e.g. Live Server on 5500 or 3000)
     const host = window.location.hostname;
-    if (host === 'localhost' || host === '127.0.0.1') {
-        return window.location.port === '8080' ? '' : 'http://localhost:8080';
+    if ((host === 'localhost' || host === '127.0.0.1') && window.location.port !== '8080') {
+        return 'http://localhost:8080';
     }
     
-    // Deployed directly on Render backend
-    if (window.location.origin.includes('onrender.com')) {
-        return '';
-    }
-    
-    // Deployed on Vercel or any other external host: direct CORS connection to Render production backend
-    return 'https://lifedrop-blood-bank-3ypa.onrender.com';
+    // In production (Vercel, Render, or any web host with reverse proxy):
+    // Use relative path '' so all requests route through the same-origin /api reverse proxy.
+    // This eliminates browser CORS preflight and cross-origin blocking completely.
+    return '';
 })();
 
 const API_PREFIX = `${API_BASE_URL}/api`;
